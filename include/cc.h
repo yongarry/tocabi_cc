@@ -18,8 +18,30 @@ public:
     RobotData &rd_;
     RobotData rd_cc_;
 
-    //WholebodyController &wbc_;
-    //TaskCommand tc;
+    //////////////////////////////////////////// Donghyeon RL /////////////////////////////////////////
+    void loadNetwork();
+    void processObservation();
+    void feedforwardPolicy();
+
+    static const int num_state = 70;
+    static const int num_hidden = 256;
+    static const int num_action = 33;
+
+    Eigen::Matrix<float, num_hidden, num_state> policy_net_w0_;
+    Eigen::Matrix<float, num_hidden, 1> policy_net_b0_;
+    Eigen::Matrix<float, num_hidden, num_hidden> policy_net_w2_;
+    Eigen::Matrix<float, num_hidden, 1> policy_net_b2_;
+    Eigen::Matrix<float, num_action, num_hidden> action_net_w_;
+    Eigen::Matrix<float, num_action, 1> action_net_b_;
+    Eigen::Matrix<float, num_hidden, 1> hidden_layer1_;
+    Eigen::Matrix<float, num_hidden, 1> hidden_layer2_;
+    Eigen::Matrix<float, num_action, 1> rl_action_;
+    
+
+    Eigen::Matrix<float, num_state, 1> state_;
+    Eigen::Matrix<float, num_state, 1> state_mean_;
+    Eigen::Matrix<float, num_state, 1> state_var_;
+
 
 private:
     Eigen::VectorQd ControlVal_;
