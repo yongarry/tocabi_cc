@@ -229,8 +229,9 @@ void CustomController::computeSlow()
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
 
-        }
+        } 
 
+        // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
         processObservation();
         feedforwardPolicy();
 
