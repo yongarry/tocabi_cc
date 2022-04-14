@@ -37,7 +37,7 @@ public:
     Eigen::Matrix<float, num_hidden, 1> hidden_layer2_;
     Eigen::Matrix<float, num_action, 1> rl_action_;
     
-
+    
     Eigen::Matrix<float, num_state, 1> state_;
     Eigen::Matrix<float, num_state, 1> state_mean_;
     Eigen::Matrix<float, num_state, 1> state_var_;

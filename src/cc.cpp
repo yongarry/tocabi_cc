@@ -229,7 +229,6 @@ void CustomController::computeSlow()
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
 
-            //rd_.link_[COM_id].x_desired = rd_.link_[COM_id].x_init;
         }
 
         processObservation();
