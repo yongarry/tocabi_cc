@@ -6,6 +6,9 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
 {
     ControlVal_.setZero();
 
+    // writeFile.open("/home/kim/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+    // writeFile << std::fixed << std::setprecision(8);
+
     loadNetwork();
 }
 
@@ -236,6 +239,8 @@ void CustomController::computeSlow()
         feedforwardPolicy();
 
         rd_.torque_desired = rl_action_.cast <double> ();
+
+        // writeFile << rd_.torque_desired.transpose() << std::endl;
     }
 }
 

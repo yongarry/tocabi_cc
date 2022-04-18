@@ -42,6 +42,7 @@ public:
     Eigen::Matrix<float, num_state, 1> state_mean_;
     Eigen::Matrix<float, num_state, 1> state_var_;
 
+    std::ofstream writeFile;
 
 private:
     Eigen::VectorQd ControlVal_;
