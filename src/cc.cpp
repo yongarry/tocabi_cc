@@ -23,6 +23,11 @@ void CustomController::loadNetwork()
     rl_action_.setZero();
 
     string cur_path = "/home/kim/tocabi_ws/src/tocabi_cc/weight/";
+
+    if (is_on_robot_)
+    {
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/weight/";
+    }
     std::ifstream file[8];
     file[0].open(cur_path+"mlp_extractor_policy_net_0_weight.txt", std::ios::in);
     file[1].open(cur_path+"mlp_extractor_policy_net_0_bias.txt", std::ios::in);
@@ -183,11 +188,14 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    for (int i = 6; i < MODEL_DOF_VIRTUAL; i++)
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
+
+    for (int i = 0; i < MODEL_DOF; i++)
     {
-        state_(data_idx) = rd_.q_dot_virtual_(i);
+        state_(data_idx) = q_dot_lpf_(i);
         data_idx++;
     }
+
 }
 
 void CustomController::feedforwardPolicy()

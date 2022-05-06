@@ -44,6 +44,9 @@ public:
 
     std::ofstream writeFile;
 
+    bool is_on_robot_ = false;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
+
 private:
     Eigen::VectorQd ControlVal_;
 };
