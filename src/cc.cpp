@@ -196,6 +196,9 @@ void CustomController::processObservation()
         data_idx++;
     }
 
+    state_(data_idx) = std::fmod(rd_.control_time_-start_time_, float(8.0));
+    data_idx++;
+
 }
 
 void CustomController::feedforwardPolicy()
@@ -236,6 +239,7 @@ void CustomController::computeSlow()
         if (rd_.tc_init)
         {
             //Initialize settings for Task Control! 
+            start_time_ = rd_.control_time_;
 
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
