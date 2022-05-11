@@ -196,7 +196,8 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    state_(data_idx) = std::fmod(rd_.control_time_-start_time_, float(8.0));
+    state_(data_idx) = std::fmod(rd_.control_time_-start_time_, float(8.0)) / 8.0;
+
     data_idx++;
 
 }
