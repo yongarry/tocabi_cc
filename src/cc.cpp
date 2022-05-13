@@ -200,7 +200,7 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 3.0);
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
@@ -270,12 +270,12 @@ void CustomController::computeSlow()
         } 
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/250)
-        {
+        // if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/250)
+        // {
             processObservation();
             feedforwardPolicy();
-            time_inference_pre_ = rd_.control_time_us_;
-        }
+        //     time_inference_pre_ = rd_.control_time_us_;
+        // }
 
         rd_.torque_desired = rl_action_.cast <double> ();
 
