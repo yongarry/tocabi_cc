@@ -192,14 +192,17 @@ void CustomController::processObservation()
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
-        state_(data_idx) = q_dot_lpf_(i);
+        // state_(data_idx) = q_dot_lpf_(i);
+        state_(data_idx) = rd_.q_dot_virtual_(i+6);
         data_idx++;
     }
 
-    state_(data_idx) = std::fmod(rd_.control_time_-start_time_, float(8.0)) / 8.0;
-
+    float squat_duration = 8.0;
+    float phase = std::fmod((rd_.control_time_us_-start_time_)/1e6, squat_duration) / squat_duration;
+    state_(data_idx) = sin(2*M_PI*phase);
     data_idx++;
-
+    state_(data_idx) = cos(2*M_PI*phase);
+    data_idx++;
 }
 
 void CustomController::feedforwardPolicy()
@@ -207,6 +210,7 @@ void CustomController::feedforwardPolicy()
     for (int i = 0; i <num_state; i++)
     {
         state_(i) = (state_(i) - state_mean_(i)) / sqrt(state_var_(i) + 1.0e-08);
+        state_(i) = DyrosMath::minmax_cut(state_(i), -2.0, 2.0);
     }
     
     hidden_layer1_ = policy_net_w0_ * state_ + policy_net_b0_;
@@ -240,7 +244,7 @@ void CustomController::computeSlow()
         if (rd_.tc_init)
         {
             //Initialize settings for Task Control! 
-            start_time_ = rd_.control_time_;
+            start_time_ = rd_.control_time_us_;
 
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
@@ -248,8 +252,12 @@ void CustomController::computeSlow()
         } 
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        processObservation();
-        feedforwardPolicy();
+        if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/250)
+        {
+            processObservation();
+            feedforwardPolicy();
+            time_inference_pre_ = rd_.control_time_us_;
+        }
 
         rd_.torque_desired = rl_action_.cast <double> ();
 
