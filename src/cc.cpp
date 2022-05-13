@@ -194,6 +194,12 @@ void CustomController::processObservation()
     state_(data_idx) = euler_angle(1);
     data_idx++;
 
+    for (int i = 6; i < MODEL_DOF_QVIRTUAL-1; i++)
+    {
+        state_(data_idx) = rd_.q_virtual_(i);
+        data_idx++;
+    }
+
     q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
 
     for (int i = 0; i < MODEL_DOF; i++)
