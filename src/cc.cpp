@@ -179,22 +179,10 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
 
-    Eigen::Quaterniond q;
-    q.x() = rd_.q_virtual_(3);
-    q.y() = rd_.q_virtual_(4);
-    q.z() = rd_.q_virtual_(5);
-    q.w() = rd_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
-
-    Eigen::Vector3d euler_angle;
-    euler_angle = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-
-    state_(data_idx) = euler_angle(0);
+    state_(data_idx) = rd_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
     data_idx++;
 
-    state_(data_idx) = euler_angle(1);
-    data_idx++;
-
-    for (int i = 6; i < MODEL_DOF_QVIRTUAL-1; i++)
+    for (int i = 3; i < MODEL_DOF_QVIRTUAL-1; i++)
     {
         state_(data_idx) = rd_.q_virtual_(i);
         data_idx++;
