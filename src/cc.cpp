@@ -188,12 +188,17 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
-
     for (int i = 0; i < MODEL_DOF; i++)
     {
-        // state_(data_idx) = q_dot_lpf_(i);
-        state_(data_idx) = rd_.q_dot_virtual_(i+6);
+        if (is_on_robot_)
+        {
+            q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
+            state_(data_idx) = q_dot_lpf_(i);
+        }
+        else
+        {
+            state_(data_idx) = rd_.q_dot_virtual_(i+6);
+        }
         data_idx++;
     }
 
