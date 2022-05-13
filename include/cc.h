@@ -23,7 +23,7 @@ public:
     void processObservation();
     void feedforwardPolicy();
 
-    static const int num_state = 72;
+    static const int num_state = 70;
     static const int num_hidden = 256;
     static const int num_action = 33;
 

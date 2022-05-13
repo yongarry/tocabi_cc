@@ -179,14 +179,20 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
 
-    state_(data_idx) = rd_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
+    Eigen::Quaterniond q;
+    q.x() = rd_.q_virtual_(3);
+    q.y() = rd_.q_virtual_(4);
+    q.z() = rd_.q_virtual_(5);
+    q.w() = rd_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
+
+    Eigen::Vector3d euler_angle;
+    euler_angle = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
+
+    state_(data_idx) = euler_angle(0);
     data_idx++;
 
-    for (int i = 3; i < MODEL_DOF_QVIRTUAL-1; i++)
-    {
-        state_(data_idx) = rd_.q_virtual_(i);
-        data_idx++;
-    }
+    state_(data_idx) = euler_angle(1);
+    data_idx++;
 
     q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_dot_lpf_, rd_.q_dot_virtual_.segment(6,MODEL_DOF), 2000, 3.0);
 
@@ -210,7 +216,7 @@ void CustomController::feedforwardPolicy()
     for (int i = 0; i <num_state; i++)
     {
         state_(i) = (state_(i) - state_mean_(i)) / sqrt(state_var_(i) + 1.0e-08);
-        state_(i) = DyrosMath::minmax_cut(state_(i), -2.0, 2.0);
+        state_(i) = DyrosMath::minmax_cut(state_(i), -3.0, 3.0);
     }
     
     hidden_layer1_ = policy_net_w0_ * state_ + policy_net_b0_;
