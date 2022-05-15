@@ -22,6 +22,7 @@ public:
     void loadNetwork();
     void processObservation();
     void feedforwardPolicy();
+    void initVariable();
 
     static const int num_state = 70;
     static const int num_hidden = 256;
@@ -44,11 +45,16 @@ public:
 
     std::ofstream writeFile;
 
-    bool is_on_robot_ = false;
+    bool is_on_robot_ = true;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
+    Eigen::Matrix<double, MODEL_DOF, 1> rl_action_lpf_;
+    Eigen::Matrix<double, 3, 1> euler_angle_lpf_;
 
     float start_time_;
     float time_inference_pre_;
+
+    Eigen::Vector3d euler_angle_;
 
 private:
     Eigen::VectorQd ControlVal_;
