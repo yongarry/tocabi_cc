@@ -1,8 +1,8 @@
 %%
 clear all;
 d = load('data.csv');
-var = load('var.csv');
-mean = load('mean.csv');
+var = load('obs_variance.txt');
+mean = load('obs_mean.txt');
 
 %%
 t = d(:,1);
