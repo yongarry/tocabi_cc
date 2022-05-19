@@ -1,0 +1,25 @@
+%%
+clear all;
+d = load('data.csv');
+var = load('var.csv');
+mean = load('mean.csv');
+
+%%
+t = d(:,1);
+euler_angle = d(:,2:4);
+euler_angle_lpf = d(:,5:7);
+q = d(:,8:40);
+q_lpf = d(:,41:73);
+qdot = d(:,74:106);
+qdot_lpf = d(:,107:139);
+tau = d(:,140:172);
+
+phase = mod(t, 8.0) / 8.0;
+sin_phase = sin(2*pi*phase);
+cos_phase = cos(2*
+
+obs = [euler_angle, q, qdot]
+normalized_obs = d(:,2:end);
+for i=1:size(d,2)
+    normalized_obs(:,i) = (normalized_obs(:,i) - mean(:,i)) / sqrt(var(:,i));
+end
