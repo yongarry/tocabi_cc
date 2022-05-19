@@ -46,7 +46,7 @@ public:
     std::ofstream writeFile;
 
     bool is_on_robot_ = false;
-    bool is_write_file_ = true;
+    bool is_write_file_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> rl_action_lpf_;
