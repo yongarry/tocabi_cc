@@ -6,7 +6,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
 {
     ControlVal_.setZero();
 
-    if (is_on_robot_)
+    if (is_on_robot_ && is_write_file_)
     {
         writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
         writeFile << std::fixed << std::setprecision(8);
@@ -216,7 +216,7 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 1.0);
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 4.0);
     q_dot_lpf_(23) = 0.0;
     q_dot_lpf_(24) = 0.0;
 
@@ -301,7 +301,7 @@ void CustomController::computeSlow()
 
         rd_.torque_desired = rl_action_lpf_;
 
-        if (is_on_robot_)
+        if (is_on_robot_ && is_write_file_)
         {
             if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/250)
             {
