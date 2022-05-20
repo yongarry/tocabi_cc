@@ -207,8 +207,8 @@ void CustomController::processObservation()
 
 
     q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF); //DyrosMath::lpf<MODEL_DOF>(rd_.q_virtual_.segment(6,MODEL_DOF), q_lpf_, 2000, 10.0);
-    q_lpf_(23) = 0.0;
-    q_lpf_(24) = 0.0;
+    // q_lpf_(23) = 0.0;
+    // q_lpf_(24) = 0.0;
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
@@ -217,8 +217,8 @@ void CustomController::processObservation()
     }
 
     q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 4.0);
-    q_dot_lpf_(23) = 0.0;
-    q_dot_lpf_(24) = 0.0;
+    // q_dot_lpf_(23) = 0.0;
+    // q_dot_lpf_(24) = 0.0;
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
@@ -271,8 +271,8 @@ void CustomController::feedforwardPolicy()
     }
 
     rl_action_lpf_ = rl_action_.cast <double> ();//DyrosMath::lpf<MODEL_DOF>(rl_action_.cast <double> (), rl_action_lpf_, 2000, 10.0);
-    rl_action_lpf_(23) = 0.0;
-    rl_action_lpf_(24) = 0.0;
+    // rl_action_lpf_(23) = 0.0;
+    // rl_action_lpf_(24) = 0.0;
     
 }
 

@@ -40,9 +40,9 @@ end
 figure()
 for i=1:size(obs,2)
     subplot(7,10,i)
-    plot(normalized_obs(:,i))
+    plot(t,normalized_obs(:,i))
     hold on
-    plot(normalized_obs_lpf(:,i))
+    plot(t,normalized_obs_lpf(:,i))
 end
 
 %%
@@ -79,8 +79,7 @@ output_lpf = layer2_lpf*w4' +b4';
 figure()
 for i=1:33
     subplot(6,6,i)
-    plot(output(:,i))
+    plot(t,output(:,i))
     hold on
-    plot(output_lpf(:,i))
-    plot(tau(:,i))
+    plot(t,output_lpf(:,i))
 end
