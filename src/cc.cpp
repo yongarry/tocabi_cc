@@ -11,8 +11,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
         writeFile << std::fixed << std::setprecision(8);
     }
-    loadNetwork();
     initVariable();
+    loadNetwork();
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -179,7 +179,21 @@ void CustomController::loadNetwork()
 }
 
 void CustomController::initVariable()
-{
+{    
+    policy_net_w0_.resize(num_hidden, num_state);
+    policy_net_b0_.resize(num_hidden, 1);
+    policy_net_w2_.resize(num_hidden, num_hidden);
+    policy_net_b2_.resize(num_hidden, 1);
+    action_net_w_.resize(num_action, num_hidden);
+    action_net_b_.resize(num_action, 1);
+    hidden_layer1_.resize(num_hidden, 1);
+    hidden_layer2_.resize(num_hidden, 1);
+    rl_action_.resize(num_action, 1);
+    
+    state_.resize(num_state, 1);
+    state_mean_.resize(num_state, 1);
+    state_var_.resize(num_state, 1);
+
     q_dot_lpf_.setZero();
     euler_angle_lpf_.setZero();
     q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF);
@@ -270,7 +284,7 @@ void CustomController::feedforwardPolicy()
         rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -300., 300.);
     }
 
-    rl_action_lpf_ = rl_action_.cast <double> ();//DyrosMath::lpf<MODEL_DOF>(rl_action_.cast <double> (), rl_action_lpf_, 2000, 10.0);
+    rl_action_lpf_ = rl_action_;//DyrosMath::lpf<MODEL_DOF>(rl_action_.cast <double> (), rl_action_lpf_, 2000, 10.0);
     // rl_action_lpf_(23) = 0.0;
     // rl_action_lpf_(24) = 0.0;
     
@@ -288,7 +302,7 @@ void CustomController::computeSlow()
 
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
-
+            torque_init_ = rd_.torque_desired;
         } 
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
@@ -299,7 +313,18 @@ void CustomController::computeSlow()
         //     time_inference_pre_ = rd_.control_time_us_;
         // }
 
-        rd_.torque_desired = rl_action_lpf_;
+        if (rd_.control_time_us_ < start_time_ + 3e6)
+        {
+            for (int i = 0; i <MODEL_DOF; i++)
+            {
+                torque_spline_(i) = DyrosMath::cubic(rd_.control_time_us_, start_time_, start_time_ + 3e6, torque_init_(i), rl_action_lpf_(i), 0.0, 0.0);
+            }
+            rd_.torque_desired = torque_spline_;
+        }
+        else
+        {
+            rd_.torque_desired = rl_action_lpf_;
+        }
 
         if (is_on_robot_ && is_write_file_)
         {

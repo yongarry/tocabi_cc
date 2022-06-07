@@ -1,7 +1,6 @@
 #include "tocabi_lib/robot_data.h"
 #include "wholebody_functions.h"
 
-
 class CustomController
 {
 public:
@@ -28,20 +27,19 @@ public:
     static const int num_hidden = 256;
     static const int num_action = 33;
 
-    Eigen::Matrix<float, num_hidden, num_state> policy_net_w0_;
-    Eigen::Matrix<float, num_hidden, 1> policy_net_b0_;
-    Eigen::Matrix<float, num_hidden, num_hidden> policy_net_w2_;
-    Eigen::Matrix<float, num_hidden, 1> policy_net_b2_;
-    Eigen::Matrix<float, num_action, num_hidden> action_net_w_;
-    Eigen::Matrix<float, num_action, 1> action_net_b_;
-    Eigen::Matrix<float, num_hidden, 1> hidden_layer1_;
-    Eigen::Matrix<float, num_hidden, 1> hidden_layer2_;
-    Eigen::Matrix<float, num_action, 1> rl_action_;
+    Eigen::MatrixXd policy_net_w0_;
+    Eigen::MatrixXd policy_net_b0_;
+    Eigen::MatrixXd policy_net_w2_;
+    Eigen::MatrixXd policy_net_b2_;
+    Eigen::MatrixXd action_net_w_;
+    Eigen::MatrixXd action_net_b_;
+    Eigen::MatrixXd hidden_layer1_;
+    Eigen::MatrixXd hidden_layer2_;
+    Eigen::MatrixXd rl_action_;
     
-    
-    Eigen::Matrix<float, num_state, 1> state_;
-    Eigen::Matrix<float, num_state, 1> state_mean_;
-    Eigen::Matrix<float, num_state, 1> state_var_;
+    Eigen::MatrixXd state_;
+    Eigen::MatrixXd state_mean_;
+    Eigen::MatrixXd state_var_;
 
     std::ofstream writeFile;
 
@@ -51,6 +49,9 @@ public:
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> rl_action_lpf_;
     Eigen::Matrix<double, 3, 1> euler_angle_lpf_;
+
+    Eigen::Matrix<double, MODEL_DOF, 1> torque_init_;
+    Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;
 
     float start_time_;
     float time_inference_pre_;

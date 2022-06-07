@@ -83,3 +83,31 @@ for i=1:33
     hold on
     plot(t,output_lpf(:,i))
 end
+
+%%
+input = repmat(obs(1000,:),100,1);
+for i=2:size(input,1)
+    input(i,35) = input(i-1,35) + 0.01; 
+end
+
+normalized_obs = input;
+for i=1:size(obs,2)
+    normalized_obs(:,i) = (normalized_obs(:,i) - mean(i)) / sqrt(var(i)+1e-8);
+end
+
+
+normalized_obs(normalized_obs < -3.0) = -3.0;
+normalized_obs(normalized_obs > 3.0) = 3.0;
+
+layer0 = normalized_obs*w0' + b0';
+layer0(layer0 < 0.0) = 0.0;
+
+layer2 = layer0*w2' +b2';
+layer2(layer2 < 0.0) = 0.0;
+
+output = layer2*w4' +b4';
+figure()
+for i=1:33
+    subplot(6,6,i)
+    plot(output(:,i))
+end
