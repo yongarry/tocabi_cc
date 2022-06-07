@@ -1,8 +1,6 @@
 %%
 clear all;
 d = load('data.csv');
-var = load('obs_variance.txt');
-mean = load('obs_mean.txt');
 
 %%
 t = d(:,1);
@@ -52,6 +50,8 @@ w2 = load('mlp_extractor_policy_net_2_weight.txt');
 b2 = load('mlp_extractor_policy_net_2_bias.txt');
 w4 = load('action_net_weight.txt');
 b4 = load('action_net_bias.txt');
+var = load('obs_variance.txt');
+mean = load('obs_mean.txt');
 
 normalized_obs(normalized_obs < -3.0) = -3.0;
 normalized_obs(normalized_obs > 3.0) = 3.0;
@@ -85,9 +85,9 @@ for i=1:33
 end
 
 %%
-input = repmat(obs(1000,:),100,1);
+input = repmat(obs(5000,:),100,1);
 for i=2:size(input,1)
-    input(i,35) = input(i-1,35) + 0.01; 
+    input(i,38) = input(i-1,38) + 0.01; 
 end
 
 normalized_obs = input;
