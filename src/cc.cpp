@@ -198,6 +198,13 @@ void CustomController::initVariable()
     euler_angle_lpf_.setZero();
     q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF);
 
+    torque_bound_ << 333, 232, 263, 289, 222, 166,
+                    333, 232, 263, 289, 222, 166,
+                    303, 303, 303, 
+                    64, 64, 64, 64, 23, 23, 10, 10,
+                    10, 10,
+                    64, 64, 64, 64, 23, 23, 10, 10;               
+
 }
 
 void CustomController::processObservation()
@@ -223,6 +230,8 @@ void CustomController::processObservation()
     q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF); //DyrosMath::lpf<MODEL_DOF>(rd_.q_virtual_.segment(6,MODEL_DOF), q_lpf_, 2000, 10.0);
     // q_lpf_(23) = 0.0;
     // q_lpf_(24) = 0.0;
+    // q_lpf_(22) = 0.0;
+    // q_lpf_(32) = 0.0;
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
@@ -230,9 +239,11 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 10.0);
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(rd_.q_dot_virtual_.segment(6,MODEL_DOF), q_dot_lpf_, 2000, 4.0);
     // q_dot_lpf_(23) = 0.0;
     // q_dot_lpf_(24) = 0.0;
+    // q_dot_lpf_(22) = 0.0;
+    // q_dot_lpf_(32) = 0.0;
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
@@ -281,12 +292,14 @@ void CustomController::feedforwardPolicy()
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
-        rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -300., 300.);
+        rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -torque_bound_(i), torque_bound_(i));
     }
 
     rl_action_lpf_ = rl_action_;//DyrosMath::lpf<MODEL_DOF>(rl_action_.cast <double> (), rl_action_lpf_, 2000, 10.0);
     // rl_action_lpf_(23) = 0.0;
     // rl_action_lpf_(24) = 0.0;
+    // rl_action_lpf_(22) = 0.0;
+    // rl_action_lpf_(32) = 0.0;
     
 }
 
@@ -313,11 +326,11 @@ void CustomController::computeSlow()
         //     time_inference_pre_ = rd_.control_time_us_;
         // }
 
-        if (rd_.control_time_us_ < start_time_ + 3e6)
+        if (rd_.control_time_us_ < start_time_ + 1e6)
         {
             for (int i = 0; i <MODEL_DOF; i++)
             {
-                torque_spline_(i) = DyrosMath::cubic(rd_.control_time_us_, start_time_, start_time_ + 3e6, torque_init_(i), rl_action_lpf_(i), 0.0, 0.0);
+                torque_spline_(i) = DyrosMath::cubic(rd_.control_time_us_, start_time_, start_time_ + 1e6, torque_init_(i), rl_action_lpf_(i), 0.0, 0.0);
             }
             rd_.torque_desired = torque_spline_;
         }
