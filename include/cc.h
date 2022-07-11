@@ -1,5 +1,6 @@
 #include "tocabi_lib/robot_data.h"
 #include "wholebody_functions.h"
+#include <random>
 
 class CustomController
 {
@@ -19,6 +20,7 @@ public:
 
     //////////////////////////////////////////// Donghyeon RL /////////////////////////////////////////
     void loadNetwork();
+    void processNoise();
     void processObservation();
     void feedforwardPolicy();
     void initVariable();
@@ -47,12 +49,20 @@ public:
     bool is_write_file_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
-    Eigen::Matrix<double, MODEL_DOF, 1> rl_action_lpf_;
     Eigen::Matrix<double, 3, 1> euler_angle_lpf_;
+
+    Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_noise_;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_noise_pre_;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_vel_noise_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> torque_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;
+    Eigen::Matrix<double, MODEL_DOF, 1> torque_rl_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_bound_;
+
+    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> Kp_;
+    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> Kv_;
 
     float start_time_;
     float time_inference_pre_;
