@@ -45,7 +45,7 @@ public:
 
     std::ofstream writeFile;
 
-    bool is_on_robot_ = true;
+    bool is_on_robot_ = false;
     bool is_write_file_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
@@ -60,9 +60,6 @@ public:
     Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_rl_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_bound_;
-
-    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> Kp_;
-    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> Kv_;
 
     float start_time_;
     float time_inference_pre_;
