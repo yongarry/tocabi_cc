@@ -240,7 +240,7 @@ void CustomController::processNoise()
         q_noise_pre_ = q_noise_;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 2000.0, 20.0);
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 2000.0, 4.0);
 }
 
 void CustomController::processObservation()
