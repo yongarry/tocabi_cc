@@ -40,6 +40,7 @@ public:
     Eigen::MatrixXd rl_action_;
     
     Eigen::MatrixXd state_;
+    Eigen::MatrixXd state_normalize_;
     Eigen::MatrixXd state_mean_;
     Eigen::MatrixXd state_var_;
 
@@ -47,9 +48,7 @@ public:
 
     bool is_on_robot_ = false;
     bool is_write_file_ = false;
-    Eigen::Matrix<double, MODEL_DOF, 1> q_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
-    Eigen::Matrix<double, 3, 1> euler_angle_lpf_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_;
@@ -62,7 +61,8 @@ public:
     Eigen::Matrix<double, MODEL_DOF, 1> torque_bound_;
 
     float start_time_;
-    float time_inference_pre_;
+    float time_inference_pre_ = 0.0;
+    float time_write_pre_ = 0.0;
 
     Eigen::Vector3d euler_angle_;
 

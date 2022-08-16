@@ -198,12 +198,11 @@ void CustomController::initVariable()
     rl_action_.resize(num_action, 1);
     
     state_.resize(num_state, 1);
+    state_normalize_.resize(num_state, 1);
     state_mean_.resize(num_state, 1);
     state_var_.resize(num_state, 1);
 
     q_dot_lpf_.setZero();
-    euler_angle_lpf_.setZero();
-    q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF);
 
     torque_bound_ << 333, 232, 263, 289, 222, 166,
                     333, 232, 263, 289, 222, 166,
@@ -219,14 +218,14 @@ void CustomController::initVariable()
                 0.0, 0.0,
                 -0.3, -0.3, -1.5, 1.27, 1.0, 0.0, 1.0, 0.0;
 
-    q_noise_pre_ = q_noise_ = q_init_;
 }
 
 void CustomController::processNoise()
 {
     if (is_on_robot_)
     {
-        q_vel_noise_ = rd_.q_dot_virtual_.segment(6,MODEL_DOF);
+        q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
+        q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
     }
     else
     {
@@ -234,13 +233,13 @@ void CustomController::processNoise()
         std::mt19937 gen(rd());
         std::uniform_real_distribution<> dis(-0.00001, 0.00001);
         for (int i = 0; i < MODEL_DOF; i++) {
-            q_noise_(i) = rd_.q_virtual_(6+i) + dis(gen);
+            q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
         }
         q_vel_noise_ = (q_noise_ - q_noise_pre_) * 2000.0;
         q_noise_pre_ = q_noise_;
     }
 
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 2000.0, 10.0);
+    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 2000.0, 4.0);
 }
 
 void CustomController::processObservation()
@@ -248,37 +247,27 @@ void CustomController::processObservation()
     int data_idx = 0;
 
     Eigen::Quaterniond q;
-    q.x() = rd_.q_virtual_(3);
-    q.y() = rd_.q_virtual_(4);
-    q.z() = rd_.q_virtual_(5);
-    q.w() = rd_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
+    q.x() = rd_cc_.q_virtual_(3);
+    q.y() = rd_cc_.q_virtual_(4);
+    q.z() = rd_cc_.q_virtual_(5);
+    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
     euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    euler_angle_lpf_ =euler_angle_; // DyrosMath::lpf<3>(euler_angle_, euler_angle_lpf_, 2000, 10.0);
 
-    state_(data_idx) = euler_angle_lpf_(0);
+    state_(data_idx) = euler_angle_(0);
     data_idx++;
 
-    state_(data_idx) = euler_angle_lpf_(1);
+    state_(data_idx) = euler_angle_(1);
     data_idx++;
 
-    q_lpf_ = rd_.q_virtual_.segment(6,MODEL_DOF); //DyrosMath::lpf<MODEL_DOF>(rd_.q_virtual_.segment(6,MODEL_DOF), q_lpf_, 2000, 10.0);
 
-    // q_lpf_(23) = 0.0;
-    // q_lpf_(24) = 0.0;
-    // q_lpf_(22) = 0.0;
-    // q_lpf_(32) = 0.0;
 
     for (int i = 0; i < MODEL_DOF; i++)
     {
-        state_(data_idx) = q_lpf_(i);
+        state_(data_idx) = q_noise_(i);
         data_idx++;
     }
 
-    // q_dot_lpf_(23) = 0.0;
-    // q_dot_lpf_(24) = 0.0;
-    // q_dot_lpf_(22) = 0.0;
-    // q_dot_lpf_(32) = 0.0;
     for (int i = 0; i < MODEL_DOF; i++)
     {
         if (is_on_robot_)
@@ -287,13 +276,13 @@ void CustomController::processObservation()
         }
         else
         {
-            state_(data_idx) =  q_dot_lpf_(i); //rd_.q_dot_virtual_(i+6); q_vel_noise_(i);
+            state_(data_idx) = q_dot_lpf_(i); //rd_cc_.q_dot_virtual_(i+6); //q_vel_noise_(i);
         }
         data_idx++;
     }
 
     float squat_duration = 8.0;
-    float phase = std::fmod((rd_.control_time_us_-start_time_)/1e6, squat_duration) / squat_duration;
+    float phase = std::fmod((rd_cc_.control_time_us_-start_time_)/1e6, squat_duration) / squat_duration;
     state_(data_idx) = sin(2*M_PI*phase);
     data_idx++;
     state_(data_idx) = cos(2*M_PI*phase);
@@ -304,11 +293,11 @@ void CustomController::feedforwardPolicy()
 {
     for (int i = 0; i <num_state; i++)
     {
-        state_(i) = (state_(i) - state_mean_(i)) / sqrt(state_var_(i) + 1.0e-08);
-        state_(i) = DyrosMath::minmax_cut(state_(i), -3.0, 3.0);
+        state_normalize_(i) = (state_(i) - state_mean_(i)) / sqrt(state_var_(i) + 1.0e-08);
+        state_normalize_(i) = DyrosMath::minmax_cut(state_normalize_(i), -3.0, 3.0);
     }
     
-    hidden_layer1_ = policy_net_w0_ * state_ + policy_net_b0_;
+    hidden_layer1_ = policy_net_w0_ * state_normalize_ + policy_net_b0_;
     for (int i = 0; i < num_hidden; i++) 
     {
         if (hidden_layer1_(i) < 0)
@@ -328,61 +317,64 @@ void CustomController::feedforwardPolicy()
 
 void CustomController::computeSlow()
 {
-    if (rd_.tc_.mode == 11)
+    copyRobotData(rd_);
+    if (rd_cc_.tc_.mode == 11)
     {
-
-        if (rd_.tc_init)
+        if (rd_cc_.tc_init)
         {
             //Initialize settings for Task Control! 
-            start_time_ = rd_.control_time_us_;
+            start_time_ = rd_cc_.control_time_us_;
+            q_noise_pre_ = q_noise_ = rd_cc_.q_virtual_.segment(6,MODEL_DOF);
 
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;
-            torque_init_ = rd_.torque_desired;
+            torque_init_ = rd_cc_.torque_desired;
         } 
 
         processNoise();
-        
+
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        // if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/50.0)
-        // {
+        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1e6 > 1/250.0)
+        {
             processObservation();
             feedforwardPolicy();
-            // time_inference_pre_ = rd_.control_time_us_;
-        // }
-
-
-        for (int i = 0; i < MODEL_DOF; i++)
-        {
-            torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -torque_bound_(i), torque_bound_(i));
+            time_inference_pre_ = rd_cc_.control_time_us_;
         }
+
+
+        // for (int i = 0; i < MODEL_DOF; i++)
+        // {
+        //     torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -torque_bound_(i), torque_bound_(i));
+        // }
+        // rd_.torque_desired = torque_rl_;
         
-        if (rd_.control_time_us_ < start_time_ + 1e6)
+        if (rd_cc_.control_time_us_ < start_time_ + 1e6)
         {
             for (int i = 0; i <MODEL_DOF; i++)
             {
-                torque_spline_(i) = DyrosMath::cubic(rd_.control_time_us_, start_time_, start_time_ + 1e6, torque_init_(i), torque_rl_(i), 0.0, 0.0);
+                torque_spline_(i) = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, torque_init_(i), torque_rl_(i), 0.0, 0.0);
             }
-            rd_.torque_desired = torque_spline_;
+            rd_cc_.torque_desired = torque_spline_;
         }
         else
         {
-            rd_.torque_desired = torque_rl_;
+             rd_.torque_desired = torque_rl_;
         }
         
         if (is_write_file_)
         {
-            if ((rd_.control_time_us_ - time_inference_pre_)/1e6 > 1/250)
+            if ((rd_cc_.control_time_us_ - time_write_pre_)/1e6 > 1/250.0)
             {
-                writeFile << (rd_.control_time_us_ - start_time_)/1e6 << "\t";
-                writeFile << euler_angle_.transpose() << "\t";
-                writeFile << euler_angle_lpf_.transpose() << "\t";
-                writeFile << q_lpf_.transpose() << "\t";
-                writeFile << rd_.q_dot_virtual_.segment(6,MODEL_DOF).transpose() << "\t";
-                writeFile << q_dot_lpf_.transpose() << "\t";
-                writeFile << rd_.torque_desired.transpose() << std::endl;
+                writeFile << (rd_cc_.control_time_us_ - start_time_)/1e6 << "\t";
 
-                time_inference_pre_ = rd_.control_time_us_;
+                writeFile << rd_cc_.torque_desired.transpose()  << "\t"; 
+                for (int i = 0; i <num_state; i++)
+                {
+                    writeFile << state_(i) << "\t";
+                }
+                writeFile << std::endl;
+
+                time_write_pre_ = rd_cc_.control_time_us_;
             }
         }
 
