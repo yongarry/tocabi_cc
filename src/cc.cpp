@@ -342,11 +342,10 @@ void CustomController::computeSlow()
         }
 
 
-        // for (int i = 0; i < MODEL_DOF; i++)
-        // {
-        //     torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -torque_bound_(i), torque_bound_(i));
-        // }
-        // rd_.torque_desired = torque_rl_;
+        for (int i = 0; i < MODEL_DOF; i++)
+        {
+            torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -torque_bound_(i), torque_bound_(i));
+        }
         
         if (rd_cc_.control_time_us_ < start_time_ + 1e6)
         {
