@@ -222,10 +222,19 @@ void CustomController::initVariable()
 
 void CustomController::processNoise()
 {
+    time_cur_ = rd_cc_.control_time_us_ / 1e6;
     if (is_on_robot_)
     {
         q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
         q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
+        if (time_cur_ - time_pre_ != 0)
+        {
+            q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
+        }
+        else
+        {
+            q_dot_lpf_ = q_dot_lpf_;
+        }
     }
     else
     {
@@ -235,11 +244,19 @@ void CustomController::processNoise()
         for (int i = 0; i < MODEL_DOF; i++) {
             q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
         }
-        q_vel_noise_ = (q_noise_ - q_noise_pre_) * 2000.0;
+        if (time_cur_ - time_pre_ != 0)
+        {
+            q_vel_noise_ = (q_noise_ - q_noise_pre_) / (time_cur_ - time_pre_);
+            q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
+        }
+        else
+        {
+            q_vel_noise_ = q_vel_noise_;
+            q_dot_lpf_ = q_dot_lpf_;
+        }
         q_noise_pre_ = q_noise_;
     }
-
-    q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 2000.0, 4.0);
+    time_pre_ = time_cur_;
 }
 
 void CustomController::processObservation()
@@ -325,6 +342,8 @@ void CustomController::computeSlow()
             //Initialize settings for Task Control! 
             start_time_ = rd_cc_.control_time_us_;
             q_noise_pre_ = q_noise_ = rd_cc_.q_virtual_.segment(6,MODEL_DOF);
+            time_cur_ = start_time_ / 1e6;
+            time_pre_ = time_cur_ - 0.005;
 
             rd_.tc_init = false;
             std::cout<<"cc mode 11"<<std::endl;

@@ -64,6 +64,9 @@ public:
     float time_inference_pre_ = 0.0;
     float time_write_pre_ = 0.0;
 
+    double time_cur_;
+    double time_pre_;
+
     Eigen::Vector3d euler_angle_;
 
 private:
