@@ -220,6 +220,26 @@ void CustomController::initVariable()
 
 }
 
+Eigen::Vector3d CustomController::mat2euler(Eigen::Matrix3d mat)
+{
+    Eigen::Vector3d euler;
+
+    double cy = std::sqrt(mat(2, 2) * mat(2, 2) + mat(1, 2) * mat(1, 2));
+    if (cy > std::numeric_limits<double>::epsilon())
+    {
+        euler(2) = -atan2(mat(0, 1), mat(0, 0));
+        euler(1) =  -atan2(-mat(0, 2), cy);
+        euler(0) = -atan2(mat(1, 2), mat(2, 2));
+    }
+    else
+    {
+        euler(2) = -atan2(-mat(1, 0), mat(1, 1));
+        euler(1) =  -atan2(-mat(0, 2), cy);
+        euler(0) = 0.0;
+    }
+    return euler;
+}
+
 void CustomController::processNoise()
 {
     time_cur_ = rd_cc_.control_time_us_ / 1e6;
@@ -227,7 +247,7 @@ void CustomController::processNoise()
     {
         q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
         q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
-        if (time_cur_ - time_pre_ > 0)
+        if (time_cur_ - time_pre_ > 0.0)
         {
             q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
         }
@@ -244,7 +264,7 @@ void CustomController::processNoise()
         for (int i = 0; i < MODEL_DOF; i++) {
             q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
         }
-        if (time_cur_ - time_pre_ > 0)
+        if (time_cur_ - time_pre_ > 0.0)
         {
             q_vel_noise_ = (q_noise_ - q_noise_pre_) / (time_cur_ - time_pre_);
             q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
@@ -269,15 +289,13 @@ void CustomController::processObservation()
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
-    euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
+    euler_angle_ = mat2euler(q.toRotationMatrix());
 
     state_(data_idx) = euler_angle_(0);
     data_idx++;
 
     state_(data_idx) = euler_angle_(1);
     data_idx++;
-
-
 
     for (int i = 0; i < MODEL_DOF; i++)
     {

@@ -1,6 +1,7 @@
 #include "tocabi_lib/robot_data.h"
 #include "wholebody_functions.h"
 #include <random>
+#include <cmath>
 
 class CustomController
 {
@@ -24,6 +25,7 @@ public:
     void processObservation();
     void feedforwardPolicy();
     void initVariable();
+    Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
 
     static const int num_state = 70;
     static const int num_hidden = 256;
