@@ -227,7 +227,7 @@ void CustomController::processNoise()
     {
         q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
         q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
-        if (time_cur_ - time_pre_ != 0)
+        if (time_cur_ - time_pre_ > 0)
         {
             q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
         }
@@ -244,7 +244,7 @@ void CustomController::processNoise()
         for (int i = 0; i < MODEL_DOF; i++) {
             q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
         }
-        if (time_cur_ - time_pre_ != 0)
+        if (time_cur_ - time_pre_ > 0)
         {
             q_vel_noise_ = (q_noise_ - q_noise_pre_) / (time_cur_ - time_pre_);
             q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
