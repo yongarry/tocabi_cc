@@ -349,11 +349,11 @@ void CustomController::processObservation()
     state_cur_(data_idx) = cos(2*M_PI*phase);
     data_idx++;
 
-    // for (int i = 0; i < num_action; i++)
-    // {
-    //     state_cur_(data_idx) = torque_rl_(i);
-    //     data_idx++;
-    // }
+    for (int i = 0; i < num_action; i++)
+    {
+        state_cur_(data_idx) = torque_rl_(i);
+        data_idx++;
+    }
 
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
     state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
