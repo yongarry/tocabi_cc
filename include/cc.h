@@ -27,9 +27,12 @@ public:
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
 
-    static const int num_state = 70;
+    static const int num_cur_state = 44;
+    static const int num_state_skip = 5;
+    static const int num_state_hist = 5;
+    static const int num_state = num_cur_state*num_state_hist;
     static const int num_hidden = 256;
-    static const int num_action = 33;
+    static const int num_action = 12;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
@@ -42,6 +45,8 @@ public:
     Eigen::MatrixXd rl_action_;
     
     Eigen::MatrixXd state_;
+    Eigen::MatrixXd state_cur_;
+    Eigen::MatrixXd state_buffer_;
     Eigen::MatrixXd state_normalize_;
     Eigen::MatrixXd state_mean_;
     Eigen::MatrixXd state_var_;
@@ -61,6 +66,9 @@ public:
     Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_rl_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_bound_;
+
+    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> kp_;
+    Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> kv_;
 
     float start_time_;
     float time_inference_pre_ = 0.0;
