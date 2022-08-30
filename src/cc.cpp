@@ -299,22 +299,22 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
 
-    // Eigen::Quaterniond q;
-    // q.x() = rd_cc_.q_virtual_(3);
-    // q.y() = rd_cc_.q_virtual_(4);
-    // q.z() = rd_cc_.q_virtual_(5);
-    // q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
+    Eigen::Quaterniond q;
+    q.x() = rd_cc_.q_virtual_(3);
+    q.y() = rd_cc_.q_virtual_(4);
+    q.z() = rd_cc_.q_virtual_(5);
+    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
-    // euler_angle_ = mat2euler(q.toRotationMatrix());
+    euler_angle_ = mat2euler(q.toRotationMatrix());
 
-    // state_cur_(data_idx) = euler_angle_(0);
-    // data_idx++;
+    state_cur_(data_idx) = euler_angle_(0);
+    data_idx++;
 
-    // state_cur_(data_idx) = euler_angle_(1);
-    // data_idx++;
+    state_cur_(data_idx) = euler_angle_(1);
+    data_idx++;
 
-    // state_cur_(data_idx) = euler_angle_(2);
-    // data_idx++;
+    state_cur_(data_idx) = euler_angle_(2);
+    data_idx++;
 
 
     for (int i = 0; i < num_action; i++)
@@ -336,11 +336,11 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    // for (int i = 0; i < 3; i++)
-    // {
-    //     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i+3);
-    //     data_idx++;
-    // }
+    for (int i = 0; i < 3; i++)
+    {
+        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i+3);
+        data_idx++;
+    }
 
     float squat_duration = 8.0;
     float phase = std::fmod((rd_cc_.control_time_us_-start_time_)/1e6, squat_duration) / squat_duration;
@@ -349,11 +349,11 @@ void CustomController::processObservation()
     state_cur_(data_idx) = cos(2*M_PI*phase);
     data_idx++;
 
-    for (int i = 0; i < num_action; i++)
-    {
-        state_cur_(data_idx) = torque_rl_(i);
-        data_idx++;
-    }
+    // for (int i = 0; i < num_action; i++)
+    // {
+    //     state_cur_(data_idx) = torque_rl_(i);
+    //     data_idx++;
+    // }
 
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
     state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
