@@ -349,11 +349,11 @@ void CustomController::processObservation()
     state_cur_(data_idx) = cos(2*M_PI*phase);
     data_idx++;
 
-    for (int i = 0; i < num_action; i++)
-    {
-        state_cur_(data_idx) = torque_rl_(i);
-        data_idx++;
-    }
+    // for (int i = 0; i < num_action; i++)
+    // {
+    //     state_cur_(data_idx) = torque_rl_(i);
+    //     data_idx++;
+    // }
 
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
     state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
@@ -429,10 +429,10 @@ void CustomController::computeSlow()
         {
             torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
         }
-        for (int i = num_action; i < MODEL_DOF; i++)
-        {
-            torque_rl_(i) = kp_(i,i) * (q_init_(i) - q_noise_(i)) - kv_(i,i)*q_vel_noise_(i);
-        }
+        // for (int i = num_action; i < MODEL_DOF; i++)
+        // {
+        //     torque_rl_(i) = kp_(i,i) * (q_init_(i) - q_noise_(i)) - kv_(i,i)*q_vel_noise_(i);
+        // }
         
         if (rd_cc_.control_time_us_ < start_time_ + 1e6)
         {

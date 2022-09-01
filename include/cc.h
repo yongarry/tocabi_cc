@@ -27,12 +27,12 @@ public:
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
 
-    static const int num_cur_state = 44;
-    static const int num_state_skip = 5;
-    static const int num_state_hist = 5;
+    static const int num_cur_state = 74;
+    static const int num_state_skip = 1;
+    static const int num_state_hist = 1;
     static const int num_state = num_cur_state*num_state_hist;
     static const int num_hidden = 256;
-    static const int num_action = 12;
+    static const int num_action = 33;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
