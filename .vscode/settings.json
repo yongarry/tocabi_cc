@@ -1,0 +1,15 @@
+{
+    "ros.distro": "noetic",
+    "python.autoComplete.extraPaths": [
+        "/home/kim/tocabi_ws/devel/lib/python2.7/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "",
+        "/home/kim/raisim_ws/raisim_build/lib"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/kim/tocabi_ws/devel/lib/python2.7/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "",
+        "/home/kim/raisim_ws/raisim_build/lib"
+    ]
+}
