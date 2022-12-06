@@ -369,7 +369,7 @@ void CustomController::feedforwardPolicy()
     for (int i = 0; i <num_state; i++)
     {
         state_normalize_(i) = (state_(i) - state_mean_(i)) / sqrt(state_var_(i) + 1.0e-08);
-        state_normalize_(i) = DyrosMath::minmax_cut(state_normalize_(i), -3.0, 3.0);
+        state_normalize_(i) = DyrosMath::minmax_cut(state_normalize_(i), -10.0, 10.0);
     }
     
     hidden_layer1_ = policy_net_w0_ * state_normalize_ + policy_net_b0_;
