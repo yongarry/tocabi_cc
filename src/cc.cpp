@@ -393,7 +393,7 @@ void CustomController::feedforwardPolicy()
 void CustomController::computeSlow()
 {
     copyRobotData(rd_);
-    if (rd_cc_.tc_.mode == 11)
+    if (rd_cc_.tc_.mode == 7)
     {
         if (rd_cc_.tc_init)
         {
@@ -404,7 +404,7 @@ void CustomController::computeSlow()
             time_pre_ = time_cur_ - 0.005;
 
             rd_.tc_init = false;
-            std::cout<<"cc mode 11"<<std::endl;
+            std::cout<<"cc mode 7"<<std::endl;
             torque_init_ = rd_cc_.torque_desired;
 
             processObservation();
