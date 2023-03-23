@@ -3,6 +3,9 @@
 #include <random>
 #include <cmath>
 
+#include <ros/ros.h>
+#include <sensor_msgs/Joy.h>
+
 class CustomController
 {
 public:
@@ -27,12 +30,13 @@ public:
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
 
-    static const int num_cur_state = 74;
+    static const int num_cur_state = 29;
     static const int num_state_skip = 1;
     static const int num_state_hist = 1;
     static const int num_state = num_cur_state*num_state_hist;
     static const int num_hidden = 256;
-    static const int num_action = 33;
+    static const int num_action = 12;
+    static const int num_actuator_action = 12;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
@@ -52,6 +56,8 @@ public:
     Eigen::MatrixXd state_var_;
 
     std::ofstream writeFile;
+
+    float phase_ = 0.0;
 
     bool is_on_robot_ = false;
     bool is_write_file_ = false;
@@ -76,8 +82,17 @@ public:
 
     double time_cur_;
     double time_pre_;
+    double action_dt_accumulate_ = 0.0;
 
     Eigen::Vector3d euler_angle_;
+
+    // Joystick
+    ros::NodeHandle nh_;
+
+    void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+    ros::Subscriber joy_sub_;
+
+    double target_vel_ = 0.0;
 
 private:
     Eigen::VectorQd ControlVal_;
