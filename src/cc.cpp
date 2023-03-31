@@ -226,12 +226,15 @@ void CustomController::initVariable()
 
     kp_.setZero();
     kv_.setZero();
-    kp_.diagonal() <<   2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
-                        2000.0, 5000.0, 4000.0, 3700.0, 3200.0, 3200.0,
+    kp_.diagonal() <<   4242.0, 2955.0, 3350.0, 3681.0, 2828.0, 2114.0,
+                        4242.0, 2955.0, 3350.0, 3681.0, 2828.0, 2114.0,
                         6000.0, 10000.0, 10000.0,
                         400.0, 1000.0, 400.0, 400.0, 400.0, 400.0, 100.0, 100.0,
                         100.0, 100.0,
                         400.0, 1000.0, 400.0, 400.0, 400.0, 400.0, 100.0, 100.0;
+    for (int i = 0; i < num_actuator_action; i++) {
+        kp_(i,i) /= 4.0;
+    }
     kv_.diagonal() << 15.0, 50.0, 20.0, 25.0, 24.0, 24.0,
                         15.0, 50.0, 20.0, 25.0, 24.0, 24.0,
                         200.0, 100.0, 100.0,
@@ -419,7 +422,8 @@ void CustomController::computeSlow()
 
         for (int i = 0; i < num_actuator_action; i++)
         {
-            torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
+            torque_rl_(i) = kp_(i,i)*(q_init_(i) + rl_action_(i)*3.14 - q_noise_(i)) - kv_(i,i)*q_vel_noise_(i);
+            torque_rl_(i) = DyrosMath::minmax_cut(torque_rl_(i), -torque_bound_(i), torque_bound_(i));
         }
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
         {
