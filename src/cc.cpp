@@ -14,7 +14,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         }
         else
         {
-            writeFile.open("/home/kim/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -35,7 +35,7 @@ void CustomController::loadNetwork()
     rl_action_.setZero();
 
 
-    string cur_path = "/home/kim/tocabi_ws/src/tocabi_cc/";
+    string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/";
 
     if (is_on_robot_)
     {
@@ -458,10 +458,12 @@ void CustomController::processObservation()
     state_cur_(data_idx) = cos(2*M_PI*phase_);
     data_idx++;
 
-    state_cur_(data_idx) = 0.2;//target_vel_x_;
+    // state_cur_(data_idx) = 0.5;//target_vel_x_;
+    state_cur_(data_idx) = target_vel_x_;
     data_idx++;
 
     state_cur_(data_idx) = 0.0;//target_vel_y_;
+    state_cur_(data_idx) = target_vel_y_;
     data_idx++;
 
     state_cur_(data_idx) = rd_cc_.LF_FT(2);
