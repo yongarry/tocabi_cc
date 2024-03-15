@@ -1,4 +1,4 @@
-#include "cc.h"
+#include "cc_yaw.h"
 
 using namespace TOCABI;
 
@@ -42,20 +42,20 @@ void CustomController::loadNetwork()
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
     }
     std::ifstream file[14];
-    file[0].open(cur_path+"weight/mlp_extractor_policy_net_0_weight.txt", std::ios::in);
-    file[1].open(cur_path+"weight/mlp_extractor_policy_net_0_bias.txt", std::ios::in);
-    file[2].open(cur_path+"weight/mlp_extractor_policy_net_2_weight.txt", std::ios::in);
-    file[3].open(cur_path+"weight/mlp_extractor_policy_net_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"weight/action_net_weight.txt", std::ios::in);
-    file[5].open(cur_path+"weight/action_net_bias.txt", std::ios::in);
-    file[6].open(cur_path+"weight/obs_mean_fixed.txt", std::ios::in);
-    file[7].open(cur_path+"weight/obs_variance_fixed.txt", std::ios::in);
-    file[8].open(cur_path+"weight/mlp_extractor_value_net_0_weight.txt", std::ios::in);
-    file[9].open(cur_path+"weight/mlp_extractor_value_net_0_bias.txt", std::ios::in);
-    file[10].open(cur_path+"weight/mlp_extractor_value_net_2_weight.txt", std::ios::in);
-    file[11].open(cur_path+"weight/mlp_extractor_value_net_2_bias.txt", std::ios::in);
-    file[12].open(cur_path+"weight/value_net_weight.txt", std::ios::in);
-    file[13].open(cur_path+"weight/value_net_bias.txt", std::ios::in);
+    file[0].open(cur_path+"weight/yaw/mlp_extractor_policy_net_0_weight.txt", std::ios::in);
+    file[1].open(cur_path+"weight/yaw/mlp_extractor_policy_net_0_bias.txt", std::ios::in);
+    file[2].open(cur_path+"weight/yaw/mlp_extractor_policy_net_2_weight.txt", std::ios::in);
+    file[3].open(cur_path+"weight/yaw/mlp_extractor_policy_net_2_bias.txt", std::ios::in);
+    file[4].open(cur_path+"weight/yaw/action_net_weight.txt", std::ios::in);
+    file[5].open(cur_path+"weight/yaw/action_net_bias.txt", std::ios::in);
+    file[6].open(cur_path+"weight/yaw/obs_mean_fixed_JY.txt", std::ios::in);
+    file[7].open(cur_path+"weight/yaw/obs_variance_fixed_JY.txt", std::ios::in);
+    file[8].open(cur_path+"weight/yaw/mlp_extractor_value_net_0_weight.txt", std::ios::in);
+    file[9].open(cur_path+"weight/yaw/mlp_extractor_value_net_0_bias.txt", std::ios::in);
+    file[10].open(cur_path+"weight/yaw/mlp_extractor_value_net_2_weight.txt", std::ios::in);
+    file[11].open(cur_path+"weight/yaw/mlp_extractor_value_net_2_bias.txt", std::ios::in);
+    file[12].open(cur_path+"weight/yaw/value_net_weight.txt", std::ios::in);
+    file[13].open(cur_path+"weight/yaw/value_net_bias.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -462,8 +462,11 @@ void CustomController::processObservation()
     state_cur_(data_idx) = target_vel_x_;
     data_idx++;
 
-    state_cur_(data_idx) = 0.0;//target_vel_y_;
+    // state_cur_(data_idx) = 0.0;//target_vel_y_;
     state_cur_(data_idx) = target_vel_y_;
+    data_idx++;
+
+    state_cur_(data_idx) = target_vel_t_;//target_yaw_vel_t_;
     data_idx++;
 
     state_cur_(data_idx) = rd_cc_.LF_FT(2);
@@ -672,6 +675,7 @@ void CustomController::copyRobotData(RobotData &rd_l)
 
 void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.2, 0.8);
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.2, 0.2);
+    target_vel_t_ = DyrosMath::minmax_cut(joy->axes[2], -0.2, 0.2);
 }
