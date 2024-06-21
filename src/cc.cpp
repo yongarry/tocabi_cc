@@ -14,7 +14,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         }
         else
         {
-            writeFile.open("/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/yong20/ros_ws/ros/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -35,27 +35,45 @@ void CustomController::loadNetwork()
     rl_action_.setZero();
 
 
-    string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/";
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/";
 
     if (is_on_robot_)
     {
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
     }
-    std::ifstream file[14];
-    file[0].open(cur_path+"weight/mlp_extractor_policy_net_0_weight.txt", std::ios::in);
-    file[1].open(cur_path+"weight/mlp_extractor_policy_net_0_bias.txt", std::ios::in);
-    file[2].open(cur_path+"weight/mlp_extractor_policy_net_2_weight.txt", std::ios::in);
-    file[3].open(cur_path+"weight/mlp_extractor_policy_net_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"weight/action_net_weight.txt", std::ios::in);
-    file[5].open(cur_path+"weight/action_net_bias.txt", std::ios::in);
-    file[6].open(cur_path+"weight/obs_mean_fixed.txt", std::ios::in);
-    file[7].open(cur_path+"weight/obs_variance_fixed.txt", std::ios::in);
-    file[8].open(cur_path+"weight/mlp_extractor_value_net_0_weight.txt", std::ios::in);
-    file[9].open(cur_path+"weight/mlp_extractor_value_net_0_bias.txt", std::ios::in);
-    file[10].open(cur_path+"weight/mlp_extractor_value_net_2_weight.txt", std::ios::in);
-    file[11].open(cur_path+"weight/mlp_extractor_value_net_2_bias.txt", std::ios::in);
-    file[12].open(cur_path+"weight/value_net_weight.txt", std::ios::in);
-    file[13].open(cur_path+"weight/value_net_bias.txt", std::ios::in);
+    std::ifstream file[18];
+    // file[0].open(cur_path+"weight/mlp_extractor_policy_net_0_weight.txt", std::ios::in);
+    // file[1].open(cur_path+"weight/mlp_extractor_policy_net_0_bias.txt", std::ios::in);
+    // file[2].open(cur_path+"weight/mlp_extractor_policy_net_2_weight.txt", std::ios::in);
+    // file[3].open(cur_path+"weight/mlp_extractor_policy_net_2_bias.txt", std::ios::in);
+    // file[4].open(cur_path+"weight/action_net_weight.txt", std::ios::in);
+    // file[5].open(cur_path+"weight/action_net_bias.txt", std::ios::in);
+    // file[6].open(cur_path+"weight/obs_mean_fixed.txt", std::ios::in);
+    // file[7].open(cur_path+"weight/obs_variance_fixed.txt", std::ios::in);
+    // file[8].open(cur_path+"weight/mlp_extractor_value_net_0_weight.txt", std::ios::in);
+    // file[9].open(cur_path+"weight/mlp_extractor_value_net_0_bias.txt", std::ios::in);
+    // file[10].open(cur_path+"weight/mlp_extractor_value_net_2_weight.txt", std::ios::in);
+    // file[11].open(cur_path+"weight/mlp_extractor_value_net_2_bias.txt", std::ios::in);
+    // file[12].open(cur_path+"weight/value_net_weight.txt", std::ios::in);
+    // file[13].open(cur_path+"weight/value_net_bias.txt", std::ios::in);
+    file[0].open(cur_path+"weight/a2c_network_actor_mlp_0_weight.txt", std::ios::in);
+    file[1].open(cur_path+"weight/a2c_network_actor_mlp_0_bias.txt", std::ios::in);
+    file[2].open(cur_path+"weight/a2c_network_actor_mlp_2_weight.txt", std::ios::in);
+    file[3].open(cur_path+"weight/a2c_network_actor_mlp_2_bias.txt", std::ios::in);
+    file[4].open(cur_path+"weight/a2c_network_actor_mlp_4_weight.txt", std::ios::in);
+    file[5].open(cur_path+"weight/a2c_network_actor_mlp_4_bias.txt", std::ios::in);
+    file[6].open(cur_path+"weight/a2c_network_mu_weight.txt", std::ios::in);
+    file[7].open(cur_path+"weight/a2c_network_mu_bias.txt", std::ios::in);
+    file[8].open(cur_path+"weight/running_mean_std_running_mean.txt", std::ios::in);
+    file[9].open(cur_path+"weight/running_mean_std_running_var.txt", std::ios::in);
+    file[10].open(cur_path+"weight/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
+    file[11].open(cur_path+"weight/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
+    file[12].open(cur_path+"weight/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
+    file[13].open(cur_path+"weight/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
+    file[14].open(cur_path+"weight/a2c_network_critic_mlp_4_weight.txt", std::ios::in);
+    file[15].open(cur_path+"weight/a2c_network_critic_mlp_4_bias.txt", std::ios::in);
+    file[16].open(cur_path+"weight/a2c_network_value_weight.txt", std::ios::in);
+    file[17].open(cur_path+"weight/a2c_network_value_bias.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -63,232 +81,253 @@ void CustomController::loadNetwork()
         std::cout<<"Can not find the weight file"<<std::endl;
     }
 
-    float temp;
-    int row = 0;
-    int col = 0;
+    std::vector<Eigen::MatrixXd> matrices = {
+        policy_net_w0_, policy_net_b0_, policy_net_w2_, policy_net_b2_, policy_net_w4_, policy_net_b4_,  
+        action_net_w_, action_net_b_, state_mean_, state_var_,
+        value_net_w0_, value_net_b0_, value_net_w2_, value_net_b2_,
+        value_net_w_, value_net_b_
+    };
 
-    while(!file[0].eof() && row != policy_net_w0_.rows())
-    {
-        file[0] >> temp;
-        if(temp != '\n')
-        {
-            policy_net_w0_(row, col) = temp;
-            col ++;
-            if (col == policy_net_w0_.cols())
-            {
+    float temp;
+    for (size_t i = 0; i < matrices.size(); ++i) {
+        int row = 0, col = 0;
+        while (!files[i].eof() && row != matrices[i].rows()) {
+            files[i] >> temp;
+            if (files[i].fail()) break; // Ensure we don't read past the end of file
+            matrices[i](row, col) = temp;
+            col++;
+            if (col == matrices[i].cols()) {
                 col = 0;
-                row ++;
+                row++;
             }
         }
     }
-    row = 0;
-    col = 0;
-    while(!file[1].eof() && row != policy_net_b0_.rows())
-    {
-        file[1] >> temp;
-        if(temp != '\n')
-        {
-            policy_net_b0_(row, col) = temp;
-            col ++;
-            if (col == policy_net_b0_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[2].eof() && row != policy_net_w2_.rows())
-    {
-        file[2] >> temp;
-        if(temp != '\n')
-        {
-            policy_net_w2_(row, col) = temp;
-            col ++;
-            if (col == policy_net_w2_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[3].eof() && row != policy_net_b2_.rows())
-    {
-        file[3] >> temp;
-        if(temp != '\n')
-        {
-            policy_net_b2_(row, col) = temp;
-            col ++;
-            if (col == policy_net_b2_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[4].eof() && row != action_net_w_.rows())
-    {
-        file[4] >> temp;
-        if(temp != '\n')
-        {
-            action_net_w_(row, col) = temp;
-            col ++;
-            if (col == action_net_w_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[5].eof() && row != action_net_b_.rows())
-    {
-        file[5] >> temp;
-        if(temp != '\n')
-        {
-            action_net_b_(row, col) = temp;
-            col ++;
-            if (col == action_net_b_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[6].eof() && row != state_mean_.rows())
-    {
-        file[6] >> temp;
-        if(temp != '\n')
-        {
-            state_mean_(row, col) = temp;
-            col ++;
-            if (col == state_mean_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[7].eof() && row != state_var_.rows())
-    {
-        file[7] >> temp;
-        if(temp != '\n')
-        {
-            state_var_(row, col) = temp;
-            col ++;
-            if (col == state_var_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[8].eof() && row != value_net_w0_.rows())
-    {
-        file[8] >> temp;
-        if(temp != '\n')
-        {
-            value_net_w0_(row, col) = temp;
-            col ++;
-            if (col == value_net_w0_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[9].eof() && row != value_net_b0_.rows())
-    {
-        file[9] >> temp;
-        if(temp != '\n')
-        {
-            value_net_b0_(row, col) = temp;
-            col ++;
-            if (col == value_net_b0_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[10].eof() && row != value_net_w2_.rows())
-    {
-        file[10] >> temp;
-        if(temp != '\n')
-        {
-            value_net_w2_(row, col) = temp;
-            col ++;
-            if (col == value_net_w2_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[11].eof() && row != value_net_b2_.rows())
-    {
-        file[11] >> temp;
-        if(temp != '\n')
-        {
-            value_net_b2_(row, col) = temp;
-            col ++;
-            if (col == value_net_b2_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[12].eof() && row != value_net_w_.rows())
-    {
-        file[12] >> temp;
-        if(temp != '\n')
-        {
-            value_net_w_(row, col) = temp;
-            col ++;
-            if (col == value_net_w_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
-    row = 0;
-    col = 0;
-    while(!file[13].eof() && row != value_net_b_.rows())
-    {
-        file[13] >> temp;
-        if(temp != '\n')
-        {
-            value_net_b_(row, col) = temp;
-            col ++;
-            if (col == value_net_b_.cols())
-            {
-                col = 0;
-                row ++;
-            }
-        }
-    }
+    // float temp;
+    // int row = 0;
+    // int col = 0;
+
+    // while(!file[0].eof() && row != policy_net_w0_.rows())
+    // {
+    //     file[0] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         policy_net_w0_(row, col) = temp;
+    //         col ++;
+    //         if (col == policy_net_w0_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[1].eof() && row != policy_net_b0_.rows())
+    // {
+    //     file[1] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         policy_net_b0_(row, col) = temp;
+    //         col ++;
+    //         if (col == policy_net_b0_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[2].eof() && row != policy_net_w2_.rows())
+    // {
+    //     file[2] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         policy_net_w2_(row, col) = temp;
+    //         col ++;
+    //         if (col == policy_net_w2_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[3].eof() && row != policy_net_b2_.rows())
+    // {
+    //     file[3] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         policy_net_b2_(row, col) = temp;
+    //         col ++;
+    //         if (col == policy_net_b2_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[4].eof() && row != action_net_w_.rows())
+    // {
+    //     file[4] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         action_net_w_(row, col) = temp;
+    //         col ++;
+    //         if (col == action_net_w_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[5].eof() && row != action_net_b_.rows())
+    // {
+    //     file[5] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         action_net_b_(row, col) = temp;
+    //         col ++;
+    //         if (col == action_net_b_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[6].eof() && row != state_mean_.rows())
+    // {
+    //     file[6] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         state_mean_(row, col) = temp;
+    //         col ++;
+    //         if (col == state_mean_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[7].eof() && row != state_var_.rows())
+    // {
+    //     file[7] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         state_var_(row, col) = temp;
+    //         col ++;
+    //         if (col == state_var_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[8].eof() && row != value_net_w0_.rows())
+    // {
+    //     file[8] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_w0_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_w0_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[9].eof() && row != value_net_b0_.rows())
+    // {
+    //     file[9] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_b0_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_b0_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[10].eof() && row != value_net_w2_.rows())
+    // {
+    //     file[10] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_w2_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_w2_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[11].eof() && row != value_net_b2_.rows())
+    // {
+    //     file[11] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_b2_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_b2_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[12].eof() && row != value_net_w_.rows())
+    // {
+    //     file[12] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_w_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_w_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
+    // row = 0;
+    // col = 0;
+    // while(!file[13].eof() && row != value_net_b_.rows())
+    // {
+    //     file[13] >> temp;
+    //     if(temp != '\n')
+    //     {
+    //         value_net_b_(row, col) = temp;
+    //         col ++;
+    //         if (col == value_net_b_.cols())
+    //         {
+    //             col = 0;
+    //             row ++;
+    //         }
+    //     }
+    // }
 }
 
 void CustomController::initVariable()
