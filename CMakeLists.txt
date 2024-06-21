@@ -27,8 +27,7 @@ include_directories(
 )
 
 add_library(${PROJECT_NAME}
-  # src/cc.cpp
-  src/cc_yaw.cpp
+  src/cc.cpp
 )
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
