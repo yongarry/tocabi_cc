@@ -469,16 +469,16 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            if (value_ < 50.0)
-            {
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Value Function" << std::endl;
-                }
-            }
+            // if (value_ < 50.0)
+            // {
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Value Function" << std::endl;
+            //     }
+            // }
 
             if (is_write_file_)
             {
