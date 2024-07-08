@@ -34,42 +34,35 @@ public:
 
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    static const int num_cur_state = 55;
-    static const int num_cur_internal_state = 37;
-    static const int num_state_skip = 2;
-    static const int num_state_hist = 5;
+    static const int num_cur_state = 59;
+    // static const int num_cur_internal_state = 37;
+    // static const int num_state_skip = 2;
+    // static const int num_state_hist = 5;
     // static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
-    static const int num_state = 55;
-    static const int num_hidden1 = 1024;
+    static const int num_state = 59;
+    static const int num_hidden1 = 512;
     static const int num_hidden2 = 512;
-    static const int num_hidden3 = 256;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
     Eigen::MatrixXd policy_net_w2_;
     Eigen::MatrixXd policy_net_b2_;
-    Eigen::MatrixXd policy_net_w4_;
-    Eigen::MatrixXd policy_net_b4_;
     Eigen::MatrixXd action_net_w_;
     Eigen::MatrixXd action_net_b_;
 
     Eigen::MatrixXd hidden_layer1_;
     Eigen::MatrixXd hidden_layer2_;
-    Eigen::MatrixXd hidden_layer3_;
     Eigen::MatrixXd rl_action_;
 
     Eigen::MatrixXd value_net_w0_;
     Eigen::MatrixXd value_net_b0_;
     Eigen::MatrixXd value_net_w2_;
     Eigen::MatrixXd value_net_b2_;
-    Eigen::MatrixXd value_net_w4_;
-    Eigen::MatrixXd value_net_b4_;
     Eigen::MatrixXd value_net_w_;
     Eigen::MatrixXd value_net_b_;
 
     Eigen::MatrixXd value_hidden_layer1_;
     Eigen::MatrixXd value_hidden_layer2_;
-    Eigen::MatrixXd value_hidden_layer3_;
     double value_;
 
     bool stop_by_value_thres_ = false;

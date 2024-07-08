@@ -47,20 +47,16 @@ void CustomController::loadNetwork()
     file[1].open(cur_path+"weight/a2c_network_actor_mlp_0_bias.txt", std::ios::in);
     file[2].open(cur_path+"weight/a2c_network_actor_mlp_2_weight.txt", std::ios::in);
     file[3].open(cur_path+"weight/a2c_network_actor_mlp_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"weight/a2c_network_actor_mlp_4_weight.txt", std::ios::in);
-    file[5].open(cur_path+"weight/a2c_network_actor_mlp_4_bias.txt", std::ios::in);
-    file[6].open(cur_path+"weight/a2c_network_mu_weight.txt", std::ios::in);
-    file[7].open(cur_path+"weight/a2c_network_mu_bias.txt", std::ios::in);
-    file[8].open(cur_path+"weight/running_mean_std_running_mean.txt", std::ios::in);
-    file[9].open(cur_path+"weight/running_mean_std_running_var.txt", std::ios::in);
-    file[10].open(cur_path+"weight/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
-    file[11].open(cur_path+"weight/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
-    file[12].open(cur_path+"weight/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
-    file[13].open(cur_path+"weight/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
-    file[14].open(cur_path+"weight/a2c_network_critic_mlp_4_weight.txt", std::ios::in);
-    file[15].open(cur_path+"weight/a2c_network_critic_mlp_4_bias.txt", std::ios::in);
-    file[16].open(cur_path+"weight/a2c_network_value_weight.txt", std::ios::in);
-    file[17].open(cur_path+"weight/a2c_network_value_bias.txt", std::ios::in);
+    file[4].open(cur_path+"weight/a2c_network_mu_weight.txt", std::ios::in);
+    file[5].open(cur_path+"weight/a2c_network_mu_bias.txt", std::ios::in);
+    file[6].open(cur_path+"weight/running_mean_std_running_mean.txt", std::ios::in);
+    file[7].open(cur_path+"weight/running_mean_std_running_var.txt", std::ios::in);
+    file[8].open(cur_path+"weight/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
+    file[9].open(cur_path+"weight/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
+    file[10].open(cur_path+"weight/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
+    file[11].open(cur_path+"weight/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
+    file[12].open(cur_path+"weight/a2c_network_value_weight.txt", std::ios::in);
+    file[13].open(cur_path+"weight/a2c_network_value_bias.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -86,20 +82,16 @@ void CustomController::loadNetwork()
     loadMatrix(file[1], policy_net_b0_);
     loadMatrix(file[2], policy_net_w2_);
     loadMatrix(file[3], policy_net_b2_);
-    loadMatrix(file[4], policy_net_w4_);
-    loadMatrix(file[5], policy_net_b4_);
-    loadMatrix(file[6], action_net_w_);
-    loadMatrix(file[7], action_net_b_);
-    loadMatrix(file[8], state_mean_);
-    loadMatrix(file[9], state_var_);
-    loadMatrix(file[10], value_net_w0_);
-    loadMatrix(file[11], value_net_b0_);
-    loadMatrix(file[12], value_net_w2_);
-    loadMatrix(file[13], value_net_b2_);
-    loadMatrix(file[14], value_net_w4_);
-    loadMatrix(file[15], value_net_b4_);
-    loadMatrix(file[16], value_net_w_);
-    loadMatrix(file[17], value_net_b_);  
+    loadMatrix(file[4], action_net_w_);
+    loadMatrix(file[5], action_net_b_);
+    loadMatrix(file[6], state_mean_);
+    loadMatrix(file[7], state_var_);
+    loadMatrix(file[8], value_net_w0_);
+    loadMatrix(file[9], value_net_b0_);
+    loadMatrix(file[10], value_net_w2_);
+    loadMatrix(file[11], value_net_b2_);
+    loadMatrix(file[12], value_net_w_);
+    loadMatrix(file[13], value_net_b_);  
 }
 
 void CustomController::initVariable()
@@ -108,32 +100,26 @@ void CustomController::initVariable()
     policy_net_b0_.resize(num_hidden1, 1);
     policy_net_w2_.resize(num_hidden2, num_hidden1);
     policy_net_b2_.resize(num_hidden2, 1);
-    policy_net_w4_.resize(num_hidden3, num_hidden2);
-    policy_net_b4_.resize(num_hidden3, 1);
-    action_net_w_.resize(num_action, num_hidden3);
+    action_net_w_.resize(num_action, num_hidden2);
     action_net_b_.resize(num_action, 1);
 
     hidden_layer1_.resize(num_hidden1, 1);
     hidden_layer2_.resize(num_hidden2, 1);
-    hidden_layer3_.resize(num_hidden3, 1);
     rl_action_.resize(num_action, 1);
 
     value_net_w0_.resize(num_hidden1, num_state);
     value_net_b0_.resize(num_hidden1, 1);
     value_net_w2_.resize(num_hidden2, num_hidden1);
     value_net_b2_.resize(num_hidden2, 1);
-    value_net_w4_.resize(num_hidden3, num_hidden2);
-    value_net_b4_.resize(num_hidden3, 1);
-    value_net_w_.resize(1, num_hidden3);
+    value_net_w_.resize(1, num_hidden2);
     value_net_b_.resize(1, 1);
 
     value_hidden_layer1_.resize(num_hidden1, 1);
     value_hidden_layer2_.resize(num_hidden2, 1);
-    value_hidden_layer2_.resize(num_hidden3, 1);
     
     state_cur_.resize(num_cur_state, 1);
     state_.resize(num_state, 1);
-    state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
+    // state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
     state_mean_.resize(num_cur_state, 1);
     state_var_.resize(num_cur_state, 1);
 
@@ -233,17 +219,23 @@ void CustomController::processObservation()
     /*
     obs 
         1) root_h: root height (z)                  (1)     0
-        2) root_rot: root rotation                  (6)     1:7
-        3) root_vel: root linear velocity           (3)     7:10
-        4) root_ang_vel: root angular velocity      (3)     10:13
-        5) dof_pos: dof position                    (12)    13:25
-        6) dof_vel: dof velocity                    (12)    25:37
-        7) key pos: local key position              (6)     37:43
-        7) action: action                           (12)    43:55
+        2) target_h: target height (z)              (1)     1
+        3) root_rot: root rotation                  (6)     2:8
+        4) root_vel: root linear velocity           (3)     8:11
+        5) root_ang_vel: root angular velocity      (3)     11:14
+        6) commands: x, y, yaw                      (3)     14:17
+        7) dof_pos: dof position                    (12)    17:29
+        8) dof_vel: dof velocity                    (12)    29:41
+        9) key pos: local key position              (6)     41:47
+        10) action: action                           (12)    47:59
     */
     int data_idx = 0;
-
+    
+    // 1) root_h: root height (z)                  (1)     0 
     state_cur_(data_idx) = rd_cc_.q_virtual_(2);
+    data_idx++;
+    // 2) target_h: target height (z)              (1)     1
+    state_cur_(data_idx) = 0.9282;
     data_idx++;
 
     Eigen::Quaterniond q;
@@ -255,6 +247,7 @@ void CustomController::processObservation()
     // euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
     quatToTanNorm(q, tan_vec, nor_vec);
 
+    // 3) root_rot: root rotation                  (6)     2:8
     state_cur_(data_idx) = tan_vec(0);
     data_idx++;
     state_cur_(data_idx) = tan_vec(1);
@@ -269,13 +262,14 @@ void CustomController::processObservation()
     state_cur_(data_idx) = nor_vec(2);
     data_idx++;
 
+    // 4) root_vel: root linear velocity           (3)     8:11
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(0);
     data_idx++;
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(1);
     data_idx++;
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(2);
     data_idx++;
-    
+    // 5) root_ang_vel: root angular velocity      (3)     11:14    
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(3);
     data_idx++;
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(4);
@@ -283,13 +277,22 @@ void CustomController::processObservation()
     state_cur_(data_idx) = rd_cc_.q_dot_virtual_(5);
     data_idx++; 
 
+    // 6) commands: x, y, yaw                      (3)     14:17
+    state_cur_(data_idx) = 0.4;
+    data_idx++;
+    state_cur_(data_idx) = 0.0;
+    data_idx++;
+    state_cur_(data_idx) = 0.0;
+    data_idx++;
 
+    // 7) dof_pos: dof position                    (12)    17:29
     for (int i = 0; i < num_actuator_action; i++)
     {
         state_cur_(data_idx) = q_noise_(i);
         data_idx++;
     }
 
+    // 8) dof_vel: dof velocity                    (12)    29:41
     for (int i = 0; i < num_actuator_action; i++)
     {
         if (is_on_robot_)
@@ -308,7 +311,7 @@ void CustomController::processObservation()
     pelv.translation() = rd_cc_.q_virtual_.head(3);
     Eigen::Vector3d local_left = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Left_Foot].xpos);
     Eigen::Vector3d local_right = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Right_Foot].xpos);
-
+    // 9) key pos: local key position              (6)     41:47
     state_cur_(data_idx) = local_left(0);
     data_idx++;
     state_cur_(data_idx) = local_left(1);
@@ -355,13 +358,16 @@ void CustomController::processObservation()
 
     // state_cur_(data_idx) = rd_cc_.RF_FT(4);
     // data_idx++;
-
+    // 10) action: action                           (12)    47:59
     for (int i = 0; i <num_actuator_action; i++) 
     {
         state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
         data_idx++;
     }
+
+    // Normalize state
     state_ = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    
     // state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(num_actuator_action), 0.0, 1.0);
     // data_idx++;
     
@@ -397,14 +403,7 @@ void CustomController::feedforwardPolicy()
             hidden_layer2_(i) = 0.0;
     }
 
-    hidden_layer3_ = policy_net_w4_ * hidden_layer2_ + policy_net_b4_;
-    for (int i = 0; i < num_hidden3; i++) 
-    {
-        if (hidden_layer3_(i) < 0)
-            hidden_layer3_(i) = 0.0;
-    }
-
-    rl_action_ = action_net_w_ * hidden_layer3_ + action_net_b_;
+    rl_action_ = action_net_w_ * hidden_layer2_ + action_net_b_;
 
     value_hidden_layer1_ = value_net_w0_ * state_ + value_net_b0_;
     for (int i = 0; i < num_hidden1; i++) 
@@ -420,14 +419,7 @@ void CustomController::feedforwardPolicy()
             value_hidden_layer2_(i) = 0.0;
     }
 
-    value_hidden_layer3_ = value_net_w4_ * value_hidden_layer2_ + value_net_b4_;
-    for (int i = 0; i < num_hidden3; i++) 
-    {
-        if (value_hidden_layer3_(i) < 0)
-            value_hidden_layer3_(i) = 0.0;
-    }
-
-    value_ = (value_net_w_ * value_hidden_layer3_ + value_net_b_)(0);
+    value_ = (value_net_w_ * value_hidden_layer2_ + value_net_b_)(0);
     
 }
 
@@ -453,10 +445,10 @@ void CustomController::computeSlow()
 
             processNoise();
             processObservation();
-            for (int i = 0; i < num_state_skip*num_state_hist; i++) 
-            {
-                state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-            }
+            // for (int i = 0; i < num_state_skip*num_state_hist; i++) 
+            // {
+            //     state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+            // }
         }
 
         processNoise();
