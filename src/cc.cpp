@@ -235,7 +235,7 @@ void CustomController::processObservation()
     state_cur_(data_idx) = rd_cc_.q_virtual_(2);
     data_idx++;
     // 2) target_h: target height (z)              (1)     1
-    state_cur_(data_idx) = 0.9282;
+    state_cur_(data_idx) = 0.8282;
     data_idx++;
 
     Eigen::Quaterniond q;
@@ -474,26 +474,26 @@ void CustomController::computeSlow()
 
             if (is_write_file_)
             {
-                    writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
-                    writeFile << phase_ << "\t";
-                    writeFile << DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0) << "\t";
+                writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
+                writeFile << phase_ << "\t";
+                writeFile << DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0) << "\t";
 
-                    writeFile << rd_cc_.LF_FT.transpose() << "\t";
-                    writeFile << rd_cc_.RF_FT.transpose() << "\t";
-                    writeFile << rd_cc_.LF_CF_FT.transpose() << "\t";
-                    writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
+                writeFile << rd_cc_.LF_FT.transpose() << "\t";
+                writeFile << rd_cc_.RF_FT.transpose() << "\t";
+                writeFile << rd_cc_.LF_CF_FT.transpose() << "\t";
+                writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
 
-                    writeFile << rd_cc_.torque_desired.transpose()  << "\t";
-                    writeFile << q_noise_.transpose() << "\t";
-                    writeFile << q_dot_lpf_.transpose() << "\t";
-                    writeFile << rd_cc_.q_dot_virtual_.transpose() << "\t";
-                    writeFile << rd_cc_.q_virtual_.transpose() << "\t";
+                writeFile << rd_cc_.torque_desired.transpose()  << "\t";
+                writeFile << q_noise_.transpose() << "\t";
+                writeFile << q_dot_lpf_.transpose() << "\t";
+                writeFile << rd_cc_.q_dot_virtual_.transpose() << "\t";
+                writeFile << rd_cc_.q_virtual_.transpose() << "\t";
 
-                    writeFile << value_ << "\t" << stop_by_value_thres_;
-                
-                    writeFile << std::endl;
+                writeFile << value_ << "\t" << stop_by_value_thres_;
+            
+                writeFile << std::endl;
 
-                    time_write_pre_ = rd_cc_.control_time_us_;
+                time_write_pre_ = rd_cc_.control_time_us_;
             }
             
             time_inference_pre_ = rd_cc_.control_time_us_;
@@ -518,7 +518,7 @@ void CustomController::computeSlow()
         }
         else
         {
-             rd_.torque_desired = torque_rl_;
+            rd_.torque_desired = torque_rl_;
         }
 
         if (stop_by_value_thres_)
