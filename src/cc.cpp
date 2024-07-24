@@ -119,7 +119,7 @@ void CustomController::initVariable()
     
     state_cur_.resize(num_cur_state, 1);
     state_.resize(num_state, 1);
-    // state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
+    state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
     state_mean_.resize(num_cur_state, 1);
     state_var_.resize(num_cur_state, 1);
 
@@ -245,37 +245,40 @@ void CustomController::processObservation()
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
     // euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    quatToTanNorm(q, tan_vec, nor_vec);
+    // quatToTanNorm(q, tan_vec, nor_vec);
 
     // 3) root_rot: root rotation                  (6)     2:8
-    state_cur_(data_idx) = tan_vec(0);
-    data_idx++;
-    state_cur_(data_idx) = tan_vec(1);
-    data_idx++;
-    state_cur_(data_idx) = tan_vec(2);
+    euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
+
+    state_cur_(data_idx) = euler_angle_(0);
     data_idx++;
 
-    state_cur_(data_idx) = nor_vec(0);
+    state_cur_(data_idx) = euler_angle_(1);
     data_idx++;
-    state_cur_(data_idx) = nor_vec(1);
+
+    state_cur_(data_idx) = euler_angle_(2);
     data_idx++;
-    state_cur_(data_idx) = nor_vec(2);
-    data_idx++;
+    // state_cur_(data_idx) = tan_vec(0);
+    // data_idx++;
+    // state_cur_(data_idx) = tan_vec(1);
+    // data_idx++;
+    // state_cur_(data_idx) = tan_vec(2);
+    // data_idx++;
+
+    // state_cur_(data_idx) = nor_vec(0);
+    // data_idx++;
+    // state_cur_(data_idx) = nor_vec(1);
+    // data_idx++;
+    // state_cur_(data_idx) = nor_vec(2);
+    // data_idx++;
 
     // 4) root_vel: root linear velocity           (3)     8:11
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(0);
-    data_idx++;
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(1);
-    data_idx++;
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(2);
-    data_idx++;
     // 5) root_ang_vel: root angular velocity      (3)     11:14    
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(3);
-    data_idx++;
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(4);
-    data_idx++;
-    state_cur_(data_idx) = rd_cc_.q_dot_virtual_(5);
-    data_idx++; 
+    for (int i=0; i<6; i++)
+    {
+        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
+        data_idx++;
+    }
 
     // 6) commands: x, y, yaw                      (3)     14:17
     state_cur_(data_idx) = 0.4;
@@ -306,24 +309,24 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    Eigen::Isometry3d pelv;
-    pelv.linear() = q.toRotationMatrix();
-    pelv.translation() = rd_cc_.q_virtual_.head(3);
-    Eigen::Vector3d local_left = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Left_Foot].xpos);
-    Eigen::Vector3d local_right = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Right_Foot].xpos);
-    // 9) key pos: local key position              (6)     41:47
-    state_cur_(data_idx) = local_left(0);
-    data_idx++;
-    state_cur_(data_idx) = local_left(1);
-    data_idx++;
-    state_cur_(data_idx) = local_left(2);
-    data_idx++;
-    state_cur_(data_idx) = local_right(0);
-    data_idx++;
-    state_cur_(data_idx) = local_right(1);
-    data_idx++;
-    state_cur_(data_idx) = local_right(2);
-    data_idx++;
+    // Eigen::Isometry3d pelv;
+    // pelv.linear() = q.toRotationMatrix();
+    // pelv.translation() = rd_cc_.q_virtual_.head(3);
+    // Eigen::Vector3d local_left = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Left_Foot].xpos);
+    // Eigen::Vector3d local_right = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Right_Foot].xpos);
+    // // 9) key pos: local key position              (6)     41:47
+    // state_cur_(data_idx) = local_left(0);
+    // data_idx++;
+    // state_cur_(data_idx) = local_left(1);
+    // data_idx++;
+    // state_cur_(data_idx) = local_left(2);
+    // data_idx++;
+    // state_cur_(data_idx) = local_right(0);
+    // data_idx++;
+    // state_cur_(data_idx) = local_right(1);
+    // data_idx++;
+    // state_cur_(data_idx) = local_right(2);
+    // data_idx++;
 
     // float squat_duration = 1.7995;
     // phase_ = std::fmod((rd_cc_.control_time_us_-start_time_)/1e6 + action_dt_accumulate_, squat_duration) / squat_duration;
@@ -364,26 +367,23 @@ void CustomController::processObservation()
         state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
         data_idx++;
     }
-
-    // Normalize state
-    state_ = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
     
     // state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(num_actuator_action), 0.0, 1.0);
     // data_idx++;
     
-    // state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
-    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
+    state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
 
-    // // Internal State First
-    // for (int i = 0; i < num_state_hist; i++)
-    // {
-    //     state_.block(num_cur_internal_state*i, 0, num_cur_internal_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_internal_state, 1);
-    // }
-    // // Action History Second
-    // for (int i = 0; i < num_state_hist-1; i++)
-    // {
-    //     state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
-    // }
+    // Internal State First
+    for (int i = 0; i < num_state_hist; i++)
+    {
+        state_.block(num_cur_internal_state*i, 0, num_cur_internal_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_internal_state, 1);
+    }
+    // Action History Second
+    for (int i = 0; i < num_state_hist-1; i++)
+    {
+        state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
+    }
 
 }
 
@@ -445,10 +445,11 @@ void CustomController::computeSlow()
 
             processNoise();
             processObservation();
-            // for (int i = 0; i < num_state_skip*num_state_hist; i++) 
-            // {
-            //     state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-            // }
+            for (int i = 0; i < num_state_skip*num_state_hist; i++) 
+            {
+                // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+                state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1).setZero();
+            }
         }
 
         processNoise();
