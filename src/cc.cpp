@@ -14,7 +14,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         }
         else
         {
-            writeFile.open("/home/yong20/ros_ws/ros/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+            // writeFile.open("/home/yong20/ros_ws/ros/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/obs.txt", std::ofstream::out | std::ofstream::app);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -120,8 +121,8 @@ void CustomController::initVariable()
     state_cur_.resize(num_cur_state, 1);
     state_.resize(num_state, 1);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
-    state_mean_.resize(num_cur_state, 1);
-    state_var_.resize(num_cur_state, 1);
+    state_mean_.resize(num_state, 1);
+    state_var_.resize(num_state, 1);
 
     q_dot_lpf_.setZero();
 
@@ -229,6 +230,7 @@ void CustomController::processObservation()
         9) key pos: local key position              (6)     41:47
         10) action: action                           (12)    47:59
     */
+
     int data_idx = 0;
     
     // 1) root_h: root height (z)                  (1)     0 
@@ -244,10 +246,7 @@ void CustomController::processObservation()
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
-    // euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    // quatToTanNorm(q, tan_vec, nor_vec);
-
-    // 3) root_rot: root rotation                  (6)     2:8
+    // 3) root_rot: root rotation                  (3)     2:8
     euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
 
     state_cur_(data_idx) = euler_angle_(0);
@@ -258,6 +257,8 @@ void CustomController::processObservation()
 
     state_cur_(data_idx) = euler_angle_(2);
     data_idx++;
+
+    // quatToTanNorm(q, tan_vec, nor_vec);
     // state_cur_(data_idx) = tan_vec(0);
     // data_idx++;
     // state_cur_(data_idx) = tan_vec(1);
@@ -274,9 +275,19 @@ void CustomController::processObservation()
 
     // 4) root_vel: root linear velocity           (3)     8:11
     // 5) root_ang_vel: root angular velocity      (3)     11:14    
+    Vector3d local_root_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.head(3));
+    Vector3d local_root_ang_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
     for (int i=0; i<6; i++)
     {
-        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
+        // state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
+        if (i < 3)
+        {
+            state_cur_(data_idx) = local_root_vel(i);
+        }
+        else
+        {
+            state_cur_(data_idx) = local_root_ang_vel(i-3);
+        }
         data_idx++;
     }
 
@@ -372,7 +383,7 @@ void CustomController::processObservation()
     // data_idx++;
     
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
-    state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
 
     // Internal State First
     for (int i = 0; i < num_state_hist; i++)
@@ -384,6 +395,7 @@ void CustomController::processObservation()
     {
         state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
     }
+    state_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
 
 }
 
@@ -404,7 +416,7 @@ void CustomController::feedforwardPolicy()
     }
 
     rl_action_ = action_net_w_ * hidden_layer2_ + action_net_b_;
-
+    // cout << rl_action_.transpose() << endl;
     value_hidden_layer1_ = value_net_w0_ * state_ + value_net_b0_;
     for (int i = 0; i < num_hidden1; i++) 
     {
@@ -475,31 +487,30 @@ void CustomController::computeSlow()
 
             if (is_write_file_)
             {
-                writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
-                writeFile << phase_ << "\t";
-                writeFile << DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0) << "\t";
+                // writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
+                // writeFile << phase_ << "\t";
+                // writeFile << DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0) << "\t";
 
-                writeFile << rd_cc_.LF_FT.transpose() << "\t";
-                writeFile << rd_cc_.RF_FT.transpose() << "\t";
-                writeFile << rd_cc_.LF_CF_FT.transpose() << "\t";
-                writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
+                // writeFile << rd_cc_.LF_FT.transpose() << "\t";
+                // writeFile << rd_cc_.RF_FT.transpose() << "\t";
+                // writeFile << rd_cc_.LF_CF_FT.transpose() << "\t";
+                // writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
 
-                writeFile << rd_cc_.torque_desired.transpose()  << "\t";
-                writeFile << q_noise_.transpose() << "\t";
-                writeFile << q_dot_lpf_.transpose() << "\t";
-                writeFile << rd_cc_.q_dot_virtual_.transpose() << "\t";
-                writeFile << rd_cc_.q_virtual_.transpose() << "\t";
+                // writeFile << rd_cc_.torque_desired.transpose()  << "\t";
+                // writeFile << q_noise_.transpose() << "\t";
+                // writeFile << q_dot_lpf_.transpose() << "\t";
+                // writeFile << rd_cc_.q_dot_virtual_.transpose() << "\t";
+                // writeFile << rd_cc_.q_virtual_.transpose() << "\t";
 
-                writeFile << value_ << "\t" << stop_by_value_thres_;
+                // writeFile << value_ << "\t" << stop_by_value_thres_;
             
-                writeFile << std::endl;
+                // writeFile << std::endl;
 
-                time_write_pre_ = rd_cc_.control_time_us_;
+                // time_write_pre_ = rd_cc_.control_time_us_;
             }
             
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
-
         for (int i = 0; i < num_actuator_action; i++)
         {
             torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
@@ -568,4 +579,16 @@ void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen
     // Normalize the vectors
     tangent.normalize();
     normal.normalize();
+}
+
+Eigen::Vector3d CustomController::quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v) {
+
+    Eigen::Vector3d q_vec = q.vec();
+    double q_w = q.w();
+
+    Eigen::Vector3d a = v * (2.0 * q_w * q_w - 1.0);
+    Eigen::Vector3d b = 2.0 * q_w * q_vec.cross(v);
+    Eigen::Vector3d c = 2.0 * q_vec * q_vec.dot(v);
+
+    return a - b + c;
 }

@@ -30,7 +30,7 @@ public:
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
     void quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal);
-
+    Eigen::Vector3d quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v);
 
     static const int num_action = 12;
     static const int num_actuator_action = 12;
@@ -80,7 +80,7 @@ public:
     float phase_ = 0.0;
 
     bool is_on_robot_ = false;
-    bool is_write_file_ = false;
+    bool is_write_file_ = true;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
