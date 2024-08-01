@@ -220,14 +220,12 @@ void CustomController::processObservation()
     /*
     obs 
         1) root_h: root height (z)                  (1)     0
-        2) target_h: target height (z)              (1)     1
-        3) root_rot: root rotation                  (6)     2:8
+        3) root_rot: root rotation                  (3)     2:8
         4) root_vel: root linear velocity           (3)     8:11
         5) root_ang_vel: root angular velocity      (3)     11:14
         6) commands: x, y, yaw                      (3)     14:17
         7) dof_pos: dof position                    (12)    17:29
         8) dof_vel: dof velocity                    (12)    29:41
-        9) key pos: local key position              (6)     41:47
         10) action: action                           (12)    47:59
     */
 
@@ -235,9 +233,6 @@ void CustomController::processObservation()
     
     // 1) root_h: root height (z)                  (1)     0 
     state_cur_(data_idx) = rd_cc_.q_virtual_(2);
-    data_idx++;
-    // 2) target_h: target height (z)              (1)     1
-    state_cur_(data_idx) = 0.8282;
     data_idx++;
 
     Eigen::Quaterniond q;
@@ -258,41 +253,16 @@ void CustomController::processObservation()
     state_cur_(data_idx) = euler_angle_(2);
     data_idx++;
 
-    // quatToTanNorm(q, tan_vec, nor_vec);
-    // state_cur_(data_idx) = tan_vec(0);
-    // data_idx++;
-    // state_cur_(data_idx) = tan_vec(1);
-    // data_idx++;
-    // state_cur_(data_idx) = tan_vec(2);
-    // data_idx++;
-
-    // state_cur_(data_idx) = nor_vec(0);
-    // data_idx++;
-    // state_cur_(data_idx) = nor_vec(1);
-    // data_idx++;
-    // state_cur_(data_idx) = nor_vec(2);
-    // data_idx++;
-
     // 4) root_vel: root linear velocity           (3)     8:11
     // 5) root_ang_vel: root angular velocity      (3)     11:14    
-    Vector3d local_root_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.head(3));
-    Vector3d local_root_ang_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
     for (int i=0; i<6; i++)
     {
-        // state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
-        if (i < 3)
-        {
-            state_cur_(data_idx) = local_root_vel(i);
-        }
-        else
-        {
-            state_cur_(data_idx) = local_root_ang_vel(i-3);
-        }
+        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
         data_idx++;
     }
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    state_cur_(data_idx) = 0.4;
+    state_cur_(data_idx) = 0.5;
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
@@ -320,58 +290,6 @@ void CustomController::processObservation()
         data_idx++;
     }
 
-    // Eigen::Isometry3d pelv;
-    // pelv.linear() = q.toRotationMatrix();
-    // pelv.translation() = rd_cc_.q_virtual_.head(3);
-    // Eigen::Vector3d local_left = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Left_Foot].xpos);
-    // Eigen::Vector3d local_right = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(pelv), rd_cc_.link_[Right_Foot].xpos);
-    // // 9) key pos: local key position              (6)     41:47
-    // state_cur_(data_idx) = local_left(0);
-    // data_idx++;
-    // state_cur_(data_idx) = local_left(1);
-    // data_idx++;
-    // state_cur_(data_idx) = local_left(2);
-    // data_idx++;
-    // state_cur_(data_idx) = local_right(0);
-    // data_idx++;
-    // state_cur_(data_idx) = local_right(1);
-    // data_idx++;
-    // state_cur_(data_idx) = local_right(2);
-    // data_idx++;
-
-    // float squat_duration = 1.7995;
-    // phase_ = std::fmod((rd_cc_.control_time_us_-start_time_)/1e6 + action_dt_accumulate_, squat_duration) / squat_duration;
-
-    // state_cur_(data_idx) = sin(2*M_PI*phase_);
-    // data_idx++;
-    // state_cur_(data_idx) = cos(2*M_PI*phase_);
-    // data_idx++;
-
-    // // state_cur_(data_idx) = 0.5;//target_vel_x_;
-    // state_cur_(data_idx) = target_vel_x_;
-    // data_idx++;
-
-    // state_cur_(data_idx) = 0.0;//target_vel_y_;
-    // state_cur_(data_idx) = target_vel_y_;
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.LF_FT(2);
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.RF_FT(2);
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.LF_FT(3);
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.RF_FT(3);
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.LF_FT(4);
-    // data_idx++;
-
-    // state_cur_(data_idx) = rd_cc_.RF_FT(4);
-    // data_idx++;
     // 10) action: action                           (12)    47:59
     for (int i = 0; i <num_actuator_action; i++) 
     {
@@ -383,7 +301,7 @@ void CustomController::processObservation()
     // data_idx++;
     
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
-    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
 
     // Internal State First
     for (int i = 0; i < num_state_hist; i++)
@@ -395,7 +313,10 @@ void CustomController::processObservation()
     {
         state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
     }
-    state_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+
+    // Normalization of State
+    // state_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    state_ = (state_ - state_mean_).array() / (state_var_.array() + 1e-05).sqrt();
 
 }
 
@@ -416,7 +337,7 @@ void CustomController::feedforwardPolicy()
     }
 
     rl_action_ = action_net_w_ * hidden_layer2_ + action_net_b_;
-    // cout << rl_action_.transpose() << endl;
+
     value_hidden_layer1_ = value_net_w0_ * state_ + value_net_b0_;
     for (int i = 0; i < num_hidden1; i++) 
     {
