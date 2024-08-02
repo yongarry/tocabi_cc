@@ -396,16 +396,17 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            // if (value_ < 50.0)
-            // {
-            //     if (stop_by_value_thres_ == false)
-            //     {
-            //         stop_by_value_thres_ = true;
-            //         stop_start_time_ = rd_cc_.control_time_us_;
-            //         q_stop_ = q_noise_;
-            //         std::cout << "Stop by Value Function" << std::endl;
-            //     }
-            // }
+            cout << "Value: " << value_ << endl;
+            if (value_ < -0.5)
+            {
+                if (stop_by_value_thres_ == false)
+                {
+                    stop_by_value_thres_ = true;
+                    stop_start_time_ = rd_cc_.control_time_us_;
+                    q_stop_ = q_noise_;
+                    std::cout << "Stop by Value Function" << std::endl;
+                }
+            }
 
             if (is_write_file_)
             {
@@ -471,7 +472,7 @@ void CustomController::copyRobotData(RobotData &rd_l)
 void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
 {
     // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.5, 0.8);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, 0.0, 0.8);
     // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
 }
 
