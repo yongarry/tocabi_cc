@@ -15,14 +15,14 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         else
         {
             // writeFile.open("/home/yong20/ros_ws/ros/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
-            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/obs.txt", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/data.txt", std::ofstream::out | std::ofstream::app);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
     initVariable();
     loadNetwork();
 
-    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &CustomController::joyCallback, this);
+    joy_sub_ = nh_.subscribe<tocabi_msgs::WalkingCommand>("/tocabi/pedalcommand", 10, &CustomController::joyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -262,7 +262,8 @@ void CustomController::processObservation()
     }
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    state_cur_(data_idx) = 0.5;
+    state_cur_(data_idx) = target_vel_x_;
+    // state_cur_(data_idx) = 0.8;
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
@@ -408,26 +409,11 @@ void CustomController::computeSlow()
 
             if (is_write_file_)
             {
-                // writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
-                // writeFile << phase_ << "\t";
-                // writeFile << DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0) << "\t";
-
-                // writeFile << rd_cc_.LF_FT.transpose() << "\t";
-                // writeFile << rd_cc_.RF_FT.transpose() << "\t";
-                // writeFile << rd_cc_.LF_CF_FT.transpose() << "\t";
-                // writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
-
-                // writeFile << rd_cc_.torque_desired.transpose()  << "\t";
-                // writeFile << q_noise_.transpose() << "\t";
-                // writeFile << q_dot_lpf_.transpose() << "\t";
-                // writeFile << rd_cc_.q_dot_virtual_.transpose() << "\t";
-                // writeFile << rd_cc_.q_virtual_.transpose() << "\t";
-
-                // writeFile << value_ << "\t" << stop_by_value_thres_;
-            
-                // writeFile << std::endl;
-
-                // time_write_pre_ = rd_cc_.control_time_us_;
+                // print contact force
+                writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
+                writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
+                
+                writeFile << std::endl;
             }
             
             time_inference_pre_ = rd_cc_.control_time_us_;
@@ -482,10 +468,11 @@ void CustomController::copyRobotData(RobotData &rd_l)
     std::memcpy(&rd_cc_, &rd_l, sizeof(RobotData));
 }
 
-void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
+    // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.5, 0.8);
+    // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
 }
 
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {

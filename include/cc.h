@@ -5,6 +5,7 @@
 
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
+#include <tocabi_msgs/WalkingCommand.h>
 
 class CustomController
 {
@@ -117,7 +118,8 @@ public:
     // Joystick
     ros::NodeHandle nh_;
 
-    void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+    void joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy);
+    // void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     ros::Subscriber joy_sub_;
 
     double target_vel_x_ = 0.0;
