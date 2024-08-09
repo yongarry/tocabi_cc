@@ -14,8 +14,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         }
         else
         {
-            // writeFile.open("/home/yong20/ros_ws/ros/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
-            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/data.txt", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/data.txt", std::ofstream::out | std::ofstream::trunc);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -262,8 +261,11 @@ void CustomController::processObservation()
     }
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    state_cur_(data_idx) = target_vel_x_;
-    // state_cur_(data_idx) = 0.8;
+    // state_cur_(data_idx) = target_vel_x_;
+    // target_vel_x_ = 1.0;
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
+    desired_vel_x = 0.5;
+    state_cur_(data_idx) = desired_vel_x;
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
@@ -396,9 +398,10 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            cout << "Value: " << value_ << endl;
-            if (value_ < -0.5)
+            // cout << "Value: " << value_ << endl;
+            if (value_ < -5.0)
             {
+                cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
                 {
                     stop_by_value_thres_ = true;
@@ -410,8 +413,21 @@ void CustomController::computeSlow()
 
             if (is_write_file_)
             {
+                for (int i = 0; i < 3; i++) {
+                    writeFile << rd_cc_.q_virtual_(i) << "\t";
+                }
+                for (int i = 0; i < 6; i++) {
+                    writeFile << rd_cc_.q_dot_virtual_(i) << "\t";
+                }
+                writeFile << desired_vel_x << "\t";
+                // for (int i = 0; i < 12; i++) {
+                //     writeFile << q_noise_(i) << "\t";
+                // }
+                // for (int i = 0; i < 12; i++) {
+                //     writeFile << q_vel_noise_(i) << "\t";
+                // }
                 // print contact force
-                writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
+                // writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
                 writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
                 
                 writeFile << std::endl;

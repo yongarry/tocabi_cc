@@ -79,6 +79,7 @@ public:
     std::ofstream writeFile;
 
     float phase_ = 0.0;
+    float desired_vel_x = 0.0;
 
     bool is_on_robot_ = false;
     bool is_write_file_ = true;
