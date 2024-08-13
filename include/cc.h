@@ -31,6 +31,7 @@ public:
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
     void quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal);
+    void checkTouchDown();
     Eigen::Vector3d quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v);
 
     static const int num_action = 12;
@@ -98,9 +99,9 @@ public:
     Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> kp_;
     Eigen::Matrix<double, MODEL_DOF, MODEL_DOF> kv_;
 
-    Eigen::Matrix<double, MODEL_DOF, 1> q_init__;
-    Eigen::Matrix<double, MODEL_DOF, 1> q_desired__;
     Eigen::VectorQd Gravity_MJ_;
+
+    Eigen::Vector6d LF_CF_FT_pre, RF_CF_FT_pre = Eigen::Vector6d::Zero();
 
     float start_time_;
     float time_inference_pre_ = 0.0;

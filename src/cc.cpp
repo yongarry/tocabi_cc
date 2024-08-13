@@ -10,7 +10,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     {
         if (is_on_robot_)
         {
-            writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/robot_data.txt", std::ofstream::out | std::ofstream::app);
         }
         else
         {
@@ -262,9 +262,9 @@ void CustomController::processObservation()
 
     // 6) commands: x, y, yaw                      (3)     14:17
     // state_cur_(data_idx) = target_vel_x_;
-    // target_vel_x_ = 1.0;
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
-    desired_vel_x = 0.5;
+    target_vel_x_ = 0.5;
+    desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
+    // desired_vel_x = target_vel_x_;
     state_cur_(data_idx) = desired_vel_x;
     data_idx++;
     state_cur_(data_idx) = 0.0;
@@ -411,15 +411,18 @@ void CustomController::computeSlow()
                 }
             }
 
+            checkTouchDown();
+
             if (is_write_file_)
             {
-                for (int i = 0; i < 3; i++) {
-                    writeFile << rd_cc_.q_virtual_(i) << "\t";
-                }
-                for (int i = 0; i < 6; i++) {
-                    writeFile << rd_cc_.q_dot_virtual_(i) << "\t";
-                }
+                // for (int i = 0; i < 3; i++) {
+                    // writeFile << rd_cc_.q_virtual_(i) << "\t";
+                // }
+                // for (int i = 0; i < 6; i++) {
+                    // writeFile << rd_cc_.q_dot_virtual_(i) << "\t";
+                // }
                 writeFile << desired_vel_x << "\t";
+                writeFile << rd_cc_.q_dot_virtual_(0) << "\t";
                 // for (int i = 0; i < 12; i++) {
                 //     writeFile << q_noise_(i) << "\t";
                 // }
@@ -464,6 +467,8 @@ void CustomController::computeSlow()
 
 
     }
+    LF_CF_FT_pre = rd_cc_.LF_CF_FT;
+    RF_CF_FT_pre = rd_cc_.RF_CF_FT;
 }
 
 void CustomController::computeFast()
@@ -488,7 +493,7 @@ void CustomController::copyRobotData(RobotData &rd_l)
 void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
 {
     // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, 0.0, 0.8);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, 0.0, 1.0);
     // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
 }
 
@@ -504,6 +509,16 @@ void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen
     // Normalize the vectors
     tangent.normalize();
     normal.normalize();
+}
+
+void CustomController::checkTouchDown() {
+    // Check if the foot is in contact with the ground
+    if (LF_CF_FT_pre(2) < 10.0 && rd_cc_.LF_CF_FT(2) > 10.0) {
+        std::cout << "Left Foot Touch Down" << std::endl;
+    }
+    if (RF_CF_FT_pre(2) < 10.0 && rd_cc_.RF_CF_FT(2) > 10.0) {
+        std::cout << "Right Foot Touch Down" << std::endl;
+    }
 }
 
 Eigen::Vector3d CustomController::quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v) {
