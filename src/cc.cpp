@@ -262,10 +262,25 @@ void CustomController::processObservation()
 
     // 6) commands: x, y, yaw                      (3)     14:17
     // state_cur_(data_idx) = target_vel_x_;
-    // target_vel_x_ = 1.0;
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
-    desired_vel_x = 0.5;
+    target_vel_x_ = 0.6;
+    desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
+    desired_vel_x = 0.6;
     state_cur_(data_idx) = desired_vel_x;
+    data_idx++;
+    state_cur_(data_idx) = 0.0;
+    data_idx++;
+    state_cur_(data_idx) = 0.0;
+    data_idx++;
+
+    // 6) foot step commands: L , theta, z          (3)     17:20
+    // check foot touch down
+    checkTouchDown();
+    if (lf_touchdown)
+        cout << "LF Touch Down" << endl;
+    if (rf_touchdown)
+        cout << "RF Touch Down" << endl;
+
+    state_cur_(data_idx) = 0.4;
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
@@ -399,17 +414,17 @@ void CustomController::computeSlow()
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
             // cout << "Value: " << value_ << endl;
-            if (value_ < -5.0)
-            {
-                cout << "Value: " << value_ << endl;
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Value Function" << std::endl;
-                }
-            }
+            // if (value_ < -5.0)
+            // {
+            //     cout << "Value: " << value_ << endl;
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Value Function" << std::endl;
+            //     }
+            // }
 
             if (is_write_file_)
             {
@@ -462,8 +477,9 @@ void CustomController::computeSlow()
             rd_.torque_desired = kp_ * (q_stop_ - q_noise_) - kv_*q_vel_noise_;
         }
 
-
     }
+        LF_CF_FT_pre = rd_cc_.LF_CF_FT;
+    RF_CF_FT_pre = rd_cc_.RF_CF_FT;
 }
 
 void CustomController::computeFast()
@@ -492,18 +508,16 @@ void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& 
     // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
 }
 
-void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {
-    // Reference direction and normal vectors
-    Eigen::Vector3d refDirection(1, 0, 0); // Tangent vector reference
-    Eigen::Vector3d refNormal(0, 1, 0);    // Normal vector reference
+void CustomController::checkTouchDown() {   
+    if (rd_cc_.LF_CF_FT(2) > 100.0 && LF_CF_FT_pre(2) < 100.0)
+        lf_touchdown = true;
+    else 
+        lf_touchdown = false;
 
-    // Rotate the reference vectors
-    tangent = quaternion * refDirection;
-    normal = quaternion * refNormal;
-
-    // Normalize the vectors
-    tangent.normalize();
-    normal.normalize();
+    if (rd_cc_.RF_CF_FT(2) > 100.0 && RF_CF_FT_pre(2) < 100.0)
+        rf_touchdown = true;
+    else 
+        rf_touchdown = false;
 }
 
 Eigen::Vector3d CustomController::quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v) {
