@@ -43,20 +43,20 @@ void CustomController::loadNetwork()
     }
     std::ifstream file[18];
 
-    file[0].open(cur_path+"weight/a2c_network_actor_mlp_0_weight.txt", std::ios::in);
-    file[1].open(cur_path+"weight/a2c_network_actor_mlp_0_bias.txt", std::ios::in);
-    file[2].open(cur_path+"weight/a2c_network_actor_mlp_2_weight.txt", std::ios::in);
-    file[3].open(cur_path+"weight/a2c_network_actor_mlp_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"weight/a2c_network_mu_weight.txt", std::ios::in);
-    file[5].open(cur_path+"weight/a2c_network_mu_bias.txt", std::ios::in);
-    file[6].open(cur_path+"weight/running_mean_std_running_mean.txt", std::ios::in);
-    file[7].open(cur_path+"weight/running_mean_std_running_var.txt", std::ios::in);
-    file[8].open(cur_path+"weight/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
-    file[9].open(cur_path+"weight/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
-    file[10].open(cur_path+"weight/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
-    file[11].open(cur_path+"weight/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
-    file[12].open(cur_path+"weight/a2c_network_value_weight.txt", std::ios::in);
-    file[13].open(cur_path+"weight/a2c_network_value_bias.txt", std::ios::in);
+    file[0].open(cur_path+"weight_0813/a2c_network_actor_mlp_0_weight.txt", std::ios::in);
+    file[1].open(cur_path+"weight_0813/a2c_network_actor_mlp_0_bias.txt", std::ios::in);
+    file[2].open(cur_path+"weight_0813/a2c_network_actor_mlp_2_weight.txt", std::ios::in);
+    file[3].open(cur_path+"weight_0813/a2c_network_actor_mlp_2_bias.txt", std::ios::in);
+    file[4].open(cur_path+"weight_0813/a2c_network_mu_weight.txt", std::ios::in);
+    file[5].open(cur_path+"weight_0813/a2c_network_mu_bias.txt", std::ios::in);
+    file[6].open(cur_path+"weight_0813/running_mean_std_running_mean.txt", std::ios::in);
+    file[7].open(cur_path+"weight_0813/running_mean_std_running_var.txt", std::ios::in);
+    file[8].open(cur_path+"weight_0813/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
+    file[9].open(cur_path+"weight_0813/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
+    file[10].open(cur_path+"weight_0813/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
+    file[11].open(cur_path+"weight_0813/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
+    file[12].open(cur_path+"weight_0813/a2c_network_value_weight.txt", std::ios::in);
+    file[13].open(cur_path+"weight_0813/a2c_network_value_bias.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -262,7 +262,7 @@ void CustomController::processObservation()
 
     // 6) commands: x, y, yaw                      (3)     14:17
     // state_cur_(data_idx) = target_vel_x_;
-    target_vel_x_ = 0.5;
+    target_vel_x_ = -0.5;
     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
     // desired_vel_x = target_vel_x_;
     state_cur_(data_idx) = desired_vel_x;
