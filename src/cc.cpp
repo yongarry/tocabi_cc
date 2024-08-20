@@ -6,6 +6,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
 {
     ControlVal_.setZero();
 
+    nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
+
     if (is_write_file_)
     {
         if (is_on_robot_)
@@ -21,7 +23,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     initVariable();
     loadNetwork();
 
-    joy_sub_ = nh_.subscribe<tocabi_msgs::WalkingCommand>("/tocabi/pedalcommand", 10, &CustomController::joyCallback, this);
+    // joy_sub_ = nh_.subscribe<tocabi_msgs::WalkingCommand>("/tocabi/pedalcommand", 10, &CustomController::joyCallback, this);
+    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -35,28 +38,28 @@ void CustomController::loadNetwork()
     rl_action_.setZero();
 
 
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/";
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/" + weight_dir_;
 
     if (is_on_robot_)
     {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/weight/";
     }
     std::ifstream file[18];
 
-    file[0].open(cur_path+"weight_0813/a2c_network_actor_mlp_0_weight.txt", std::ios::in);
-    file[1].open(cur_path+"weight_0813/a2c_network_actor_mlp_0_bias.txt", std::ios::in);
-    file[2].open(cur_path+"weight_0813/a2c_network_actor_mlp_2_weight.txt", std::ios::in);
-    file[3].open(cur_path+"weight_0813/a2c_network_actor_mlp_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"weight_0813/a2c_network_mu_weight.txt", std::ios::in);
-    file[5].open(cur_path+"weight_0813/a2c_network_mu_bias.txt", std::ios::in);
-    file[6].open(cur_path+"weight_0813/running_mean_std_running_mean.txt", std::ios::in);
-    file[7].open(cur_path+"weight_0813/running_mean_std_running_var.txt", std::ios::in);
-    file[8].open(cur_path+"weight_0813/a2c_network_critic_mlp_0_weight.txt", std::ios::in);
-    file[9].open(cur_path+"weight_0813/a2c_network_critic_mlp_0_bias.txt", std::ios::in);
-    file[10].open(cur_path+"weight_0813/a2c_network_critic_mlp_2_weight.txt", std::ios::in);
-    file[11].open(cur_path+"weight_0813/a2c_network_critic_mlp_2_bias.txt", std::ios::in);
-    file[12].open(cur_path+"weight_0813/a2c_network_value_weight.txt", std::ios::in);
-    file[13].open(cur_path+"weight_0813/a2c_network_value_bias.txt", std::ios::in);
+    file[0].open(cur_path+"a2c_network_actor_mlp_0_weight.txt", std::ios::in);
+    file[1].open(cur_path+"a2c_network_actor_mlp_0_bias.txt", std::ios::in);
+    file[2].open(cur_path+"a2c_network_actor_mlp_2_weight.txt", std::ios::in);
+    file[3].open(cur_path+"a2c_network_actor_mlp_2_bias.txt", std::ios::in);
+    file[4].open(cur_path+"a2c_network_mu_weight.txt", std::ios::in);
+    file[5].open(cur_path+"a2c_network_mu_bias.txt", std::ios::in);
+    file[6].open(cur_path+"running_mean_std_running_mean.txt", std::ios::in);
+    file[7].open(cur_path+"running_mean_std_running_var.txt", std::ios::in);
+    file[8].open(cur_path+"a2c_network_critic_mlp_0_weight.txt", std::ios::in);
+    file[9].open(cur_path+"a2c_network_critic_mlp_0_bias.txt", std::ios::in);
+    file[10].open(cur_path+"a2c_network_critic_mlp_2_weight.txt", std::ios::in);
+    file[11].open(cur_path+"a2c_network_critic_mlp_2_bias.txt", std::ios::in);
+    file[12].open(cur_path+"a2c_network_value_weight.txt", std::ios::in);
+    file[13].open(cur_path+"a2c_network_value_bias.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -262,14 +265,34 @@ void CustomController::processObservation()
 
     // 6) commands: x, y, yaw                      (3)     14:17
     // state_cur_(data_idx) = target_vel_x_;
-    target_vel_x_ = -0.5;
-    desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, target_vel_x_, 0.0, 0.0);
-    // desired_vel_x = target_vel_x_;
-    state_cur_(data_idx) = desired_vel_x;
+    // if (rd_cc_.control_time_us_ < start_time_ + 5e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, 1.0, 0.0, 0.0);
+    //     state_cur_(data_idx) = desired_vel_x;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 10e6 && rd_cc_.control_time_us_ >= start_time_ + 5e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 5e6, start_time_ + 7e6, 1.0, -0.7, 0.0, 0.0);
+    //     state_cur_(data_idx) = desired_vel_x;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 15e6 && rd_cc_.control_time_us_ >= start_time_ + 10e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 10e6, start_time_ + 11e6, -0.7, 1.0, 0.0, 0.0);
+    //     state_cur_(data_idx) = desired_vel_x;        
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 20e6 && rd_cc_.control_time_us_ >= start_time_ + 15e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 15e6, start_time_ + 20e6, 1.0, 0.0, 0.0, 0.0);
+    //     state_cur_(data_idx) = desired_vel_x;
+    // }
+    // else {
+    //     desired_vel_x = 0.0;
+    //     state_cur_(data_idx) = desired_vel_x;
+    // }
+    // cout << "Desired Vel: " << desired_vel_x << endl;
+    state_cur_(data_idx) = target_vel_x_;
+    // state_cur_(data_idx) = 1.0;
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
-    state_cur_(data_idx) = 0.0;
+    // state_cur_(data_idx) = 0.0;
+    state_cur_(data_idx) = target_vel_yaw_;
     data_idx++;
 
     // 7) dof_pos: dof position                    (12)    17:29
@@ -495,6 +518,13 @@ void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& 
     // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
     target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, 0.0, 1.0);
     // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
+}
+
+void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
+{
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1], -0.5, 1.0);
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.3, 0.3);
+    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3], -0.524, 0.524);
 }
 
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {

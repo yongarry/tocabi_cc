@@ -117,15 +117,19 @@ public:
     // float ft_left_init_ = 500.0;
     // float ft_right_init_ = 500.0;
 
+    string weight_dir_ = "";
     // Joystick
     ros::NodeHandle nh_;
 
     void joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy);
+    void xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     // void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     ros::Subscriber joy_sub_;
+    ros::Subscriber xbox_joy_sub_;
 
     double target_vel_x_ = 0.0;
     double target_vel_y_ = 0.0;
+    double target_vel_yaw_ = 0.0;
 
 private:
     Eigen::VectorQd ControlVal_;
