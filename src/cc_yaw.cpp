@@ -21,7 +21,7 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     initVariable();
     loadNetwork();
 
-    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy_gui", 10, &CustomController::joyCallback, this);
+    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &CustomController::joyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -35,7 +35,7 @@ void CustomController::loadNetwork()
     rl_action_.setZero();
 
 
-    string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/";
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/";
 
     if (is_on_robot_)
     {
@@ -677,5 +677,5 @@ void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
     target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.2, 0.8);
     target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.2, 0.2);
-    target_vel_t_ = DyrosMath::minmax_cut(joy->axes[2], -0.2, 0.2);
+    target_vel_t_ = DyrosMath::minmax_cut(joy->axes[3], -0.2, 0.2);
 }
