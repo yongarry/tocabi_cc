@@ -44,7 +44,7 @@ void CustomController::loadNetwork()
     {
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/weight/";
     }
-    std::ifstream file[18];
+    std::ifstream file[22];
 
     file[0].open(cur_path+"a2c_network_actor_mlp_0_weight.txt", std::ios::in);
     file[1].open(cur_path+"a2c_network_actor_mlp_0_bias.txt", std::ios::in);
@@ -60,6 +60,15 @@ void CustomController::loadNetwork()
     file[11].open(cur_path+"a2c_network_critic_mlp_2_bias.txt", std::ios::in);
     file[12].open(cur_path+"a2c_network_value_weight.txt", std::ios::in);
     file[13].open(cur_path+"a2c_network_value_bias.txt", std::ios::in);
+
+    file[14].open(cur_path+"a2c_network__disc_mlp_0_weight.txt", std::ios::in);
+    file[15].open(cur_path+"a2c_network__disc_mlp_0_bias.txt", std::ios::in);
+    file[16].open(cur_path+"a2c_network__disc_mlp_2_weight.txt", std::ios::in);
+    file[17].open(cur_path+"a2c_network__disc_mlp_2_bias.txt", std::ios::in);
+    file[18].open(cur_path+"a2c_network__disc_logits_weight.txt", std::ios::in);
+    file[19].open(cur_path+"a2c_network__disc_logits_bias.txt", std::ios::in);
+    file[20].open(cur_path+"amp_running_mean_std_running_mean.txt", std::ios::in);
+    file[21].open(cur_path+"amp_running_mean_std_running_var.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -95,6 +104,16 @@ void CustomController::loadNetwork()
     loadMatrix(file[11], value_net_b2_);
     loadMatrix(file[12], value_net_w_);
     loadMatrix(file[13], value_net_b_);  
+
+    loadMatrix(file[14], disc_net_w0_);
+    loadMatrix(file[15], disc_net_b0_);
+    loadMatrix(file[16], disc_net_w2_);
+    loadMatrix(file[17], disc_net_b2_);
+    loadMatrix(file[18], disc_net_w_);
+    loadMatrix(file[19], disc_net_b_);
+    loadMatrix(file[20], disc_state_mean_);
+    loadMatrix(file[21], disc_state_var_);    
+
 }
 
 void CustomController::initVariable()
@@ -125,6 +144,24 @@ void CustomController::initVariable()
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
     state_mean_.resize(num_state, 1);
     state_var_.resize(num_state, 1);
+
+    // Discriminator Network
+    disc_net_w0_.resize(num_disc_hidden1, num_disc_state);
+    disc_net_b0_.resize(num_disc_hidden1, 1);
+    disc_net_w2_.resize(num_disc_hidden2, num_disc_hidden1);
+    disc_net_b2_.resize(num_disc_hidden2, 1);    
+    disc_net_w_.resize(1, num_disc_hidden2);
+    disc_net_b_.resize(1, 1);
+
+    disc_hidden_layer1_.resize(num_disc_hidden1, 1);
+    disc_hidden_layer2_.resize(num_disc_hidden2, 1);
+
+    disc_state_buffer_.resize(num_disc_cur_state*2, 1);
+    disc_state_cur_.resize(num_disc_cur_state, 1);
+    disc_state_.resize(num_disc_state, 1);
+    disc_state_mean_.resize(num_disc_state, 1);
+    disc_state_var_.resize(num_disc_state, 1);
+
 
     q_dot_lpf_.setZero();
 
@@ -234,8 +271,8 @@ void CustomController::processObservation()
     int data_idx = 0;
     
     // 1) root_h: root height (z)                  (1)     0 
-    state_cur_(data_idx) = rd_cc_.q_virtual_(2);
-    data_idx++;
+    // state_cur_(data_idx) = rd_cc_.q_virtual_(2);
+    // data_idx++;
 
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
@@ -257,42 +294,81 @@ void CustomController::processObservation()
 
     // 4) root_vel: root linear velocity           (3)     8:11
     // 5) root_ang_vel: root angular velocity      (3)     11:14    
-    for (int i=0; i<6; i++)
+    
+    local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    for (int i=0; i<3; i++)
     {
-        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
+        state_cur_(data_idx) = local_lin_vel_(i);
+        data_idx++;
+    }    
+    for (int i=0; i<3; i++)
+    {
+        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i+3);
         data_idx++;
     }
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    // state_cur_(data_idx) = target_vel_x_;
-    // if (rd_cc_.control_time_us_ < start_time_ + 5e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, 1.0, 0.0, 0.0);
-    //     state_cur_(data_idx) = desired_vel_x;
+    // if (rd_cc_.control_time_us_ < start_time_ + 10e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5e6, 0.0, 1.0, 0.0, 0.0);
+    //     desired_vel_yaw = 0.0;
     // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 10e6 && rd_cc_.control_time_us_ >= start_time_ + 5e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 5e6, start_time_ + 7e6, 1.0, -0.7, 0.0, 0.0);
-    //     state_cur_(data_idx) = desired_vel_x;
+    // else if (rd_cc_.control_time_us_ < start_time_ + 15e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 10e6, start_time_ + 14e6, 1.0, 0.0, 0.0, 0.0);
+    //     desired_vel_yaw = 0.0;
     // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 15e6 && rd_cc_.control_time_us_ >= start_time_ + 10e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 10e6, start_time_ + 11e6, -0.7, 1.0, 0.0, 0.0);
-    //     state_cur_(data_idx) = desired_vel_x;        
+    // else if (rd_cc_.control_time_us_ < start_time_ + 25e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 15e6, start_time_ + 20e6, 0.0, -0.5, 0.0, 0.0);
+    //     desired_vel_yaw = 0.0;
     // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 20e6 && rd_cc_.control_time_us_ >= start_time_ + 15e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 15e6, start_time_ + 20e6, 1.0, 0.0, 0.0, 0.0);
-    //     state_cur_(data_idx) = desired_vel_x;
+    // else if (rd_cc_.control_time_us_ < start_time_ + 40e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 25e6, start_time_ + 26e6, -0.5, 0.0, 0.0, 0.0);
+    //     desired_vel_yaw = -0.4;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 50e6) {
+    //     desired_vel_x = 0.0;
+    //     desired_vel_yaw = 0.4;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 60e6) {
+    //     desired_vel_x = 0.5;
+    //     desired_vel_yaw = -0.4;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 70e6) {
+    //     desired_vel_x = 0.5;
+    //     desired_vel_yaw = 0.4;
     // }
     // else {
     //     desired_vel_x = 0.0;
-    //     state_cur_(data_idx) = desired_vel_x;
+    //     desired_vel_yaw = 0.0;
     // }
-    // cout << "Desired Vel: " << desired_vel_x << endl;
+
+    // if (rd_cc_.control_time_us_ < start_time_ + 20e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 0.8, 0.8/20e6, 0.8/20e6);
+    //     desired_vel_yaw = 0.0;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 48e6) {
+    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_+20e6, start_time_ + 48e6, 0.8, -0.4, 1.2/28e6, 1.2/28e6);
+    //     desired_vel_yaw = 0.0;
+    // }
+    
+
+    // state_cur_(data_idx) = desired_vel_x;
+    // data_idx++;
+    // state_cur_(data_idx) = 0.0;
+    // data_idx++;
+    // state_cur_(data_idx) = desired_vel_yaw;
+    // data_idx++;
+
     state_cur_(data_idx) = target_vel_x_;
-    // state_cur_(data_idx) = 1.0;
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.5, 1.5/20e6, 1.5/20e6);
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.4, 1.4/20e6, 1.4/20e6);
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 30e6, 0.0, 1.5, 1.5/30e6, 1.5/30e6);
+    // state_cur_(data_idx) = desired_vel_x;
     data_idx++;
+    // state_cur_(data_idx) = target_vel_y_;
     state_cur_(data_idx) = 0.0;
     data_idx++;
-    // state_cur_(data_idx) = 0.0;
     state_cur_(data_idx) = target_vel_yaw_;
+    // state_cur_(data_idx) = 0.0;
     data_idx++;
 
     // 7) dof_pos: dof position                    (12)    17:29
@@ -346,6 +422,73 @@ void CustomController::processObservation()
 
 }
 
+void CustomController::processDiscriminator()
+{
+    /*
+    1) root_h
+    2) base euler
+    3) q pos
+    4) q vel
+    5) local key pos
+    */
+    int disc_data_idx = 0;
+
+    // 1) root_h
+    disc_state_cur_(disc_data_idx) = rd_cc_.q_virtual_(2);
+    disc_data_idx++;
+
+    // 2) base euler
+    Eigen::Quaterniond q;
+    q.x() = rd_cc_.q_virtual_(3);
+    q.y() = rd_cc_.q_virtual_(4);
+    q.z() = rd_cc_.q_virtual_(5);
+    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
+    euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
+
+    for (int i=0; i<3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = euler_angle_(i);
+        disc_data_idx++;
+    }
+
+    // 3) q pos
+    for (int i = 0; i < 12; i++)
+    {
+        disc_state_cur_(disc_data_idx) = q_noise_(i);
+        disc_data_idx++;
+    }    
+
+    // 4) q vel
+    for (int i = 0; i < 12; i++)
+    {
+        disc_state_cur_(disc_data_idx) = q_vel_noise_(i);
+        disc_data_idx++;
+    }
+
+    // 5) local key pos
+    Vector3d global_lfoot_pos = rd_cc_.link_[Left_Foot].xpos;
+    Vector3d global_rfoot_pos = rd_cc_.link_[Right_Foot].xpos;
+
+    Vector3d local_lfoot_pos = quatRotateInverse(q, global_lfoot_pos - rd_cc_.q_virtual_.head(3));
+    Vector3d local_rfoot_pos = quatRotateInverse(q, global_rfoot_pos - rd_cc_.q_virtual_.head(3));
+
+    for (int i = 0; i < 3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = local_lfoot_pos(i);
+        disc_data_idx++;
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = local_rfoot_pos(i);
+        disc_data_idx++;
+    }
+
+    disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state,1) = disc_state_buffer_.block(0, 0, num_disc_cur_state,1); 
+    disc_state_buffer_.block(0, 0, num_disc_cur_state,1) = disc_state_cur_;
+
+    disc_state_ = (disc_state_buffer_ - disc_state_mean_).array() / (disc_state_var_.array() + 1e-05).sqrt();   
+}
+
 void CustomController::feedforwardPolicy()
 {
     hidden_layer1_ = policy_net_w0_ * state_ + policy_net_b0_;
@@ -379,7 +522,23 @@ void CustomController::feedforwardPolicy()
     }
 
     value_ = (value_net_w_ * value_hidden_layer2_ + value_net_b_)(0);
-    
+
+    // Discriminator
+    disc_hidden_layer1_ = disc_net_w0_ * disc_state_ + disc_net_b0_;
+    for (int i = 0; i < num_disc_hidden1; i++) 
+    {
+        if (disc_hidden_layer1_(i) < 0)
+            disc_hidden_layer1_(i) = 0.0;
+    }
+
+    disc_hidden_layer2_ = disc_net_w2_ * disc_hidden_layer1_ + disc_net_b2_;
+    for (int i = 0; i < num_disc_hidden2; i++) 
+    {
+        if (disc_hidden_layer2_(i) < 0)
+            disc_hidden_layer2_(i) = 0.0;
+    }
+
+    disc_value_ = (disc_net_w_ * disc_hidden_layer2_ + disc_net_b_)(0);
 }
 
 void CustomController::computeSlow()
@@ -404,11 +563,13 @@ void CustomController::computeSlow()
 
             processNoise();
             processObservation();
+            feedforwardPolicy();
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
                 // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
                 state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1).setZero();
             }
+            disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state,1).setZero();
         }
 
         processNoise();
@@ -417,12 +578,13 @@ void CustomController::computeSlow()
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
         {
             processObservation();
+            processDiscriminator();
             feedforwardPolicy();
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
             // cout << "Value: " << value_ << endl;
-            if (value_ < -5.0)
+            if (value_ < -10.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -433,6 +595,7 @@ void CustomController::computeSlow()
                     std::cout << "Stop by Value Function" << std::endl;
                 }
             }
+            cout << "Disc: " << disc_value_ << endl;
 
             checkTouchDown();
 
@@ -444,8 +607,23 @@ void CustomController::computeSlow()
                 // for (int i = 0; i < 6; i++) {
                     // writeFile << rd_cc_.q_dot_virtual_(i) << "\t";
                 // }
-                writeFile << desired_vel_x << "\t";
-                writeFile << rd_cc_.q_dot_virtual_(0) << "\t";
+
+                // Eigen::Quaterniond q;
+                // q.x() = rd_cc_.q_virtual_(3);
+                // q.y() = rd_cc_.q_virtual_(4);
+                // q.z() = rd_cc_.q_virtual_(5);
+                // q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
+                // Eigen::Vector3d local_lin_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+                // writeFile << rd_cc_.q_dot_virtual_(0) << "\t";
+
+                writeFile << target_vel_x_ << "\t";
+                writeFile << desired_vel_x << "\t";       
+                writeFile << local_lin_vel_(0) << "\t";
+
+                writeFile << target_vel_yaw_ << "\t";
+                writeFile << desired_vel_yaw << "\t";
+                writeFile << rd_cc_.q_dot_virtual_(5) << "\t";
+
                 // for (int i = 0; i < 12; i++) {
                 //     writeFile << q_noise_(i) << "\t";
                 // }
@@ -516,15 +694,16 @@ void CustomController::copyRobotData(RobotData &rd_l)
 void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
 {
     // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, 0.0, 1.0);
-    // target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.3, 0.3);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.4, 0.8);
+    target_vel_y_ = 0.0; // DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
+    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->step_length_y, -0.3, 0.3);
 }
 
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
     target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1], -0.5, 1.0);
-    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.3, 0.3);
-    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3], -0.524, 0.524);
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.0, 0.0);
+    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3], -0.4, 0.4);
 }
 
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {

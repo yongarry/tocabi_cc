@@ -27,6 +27,7 @@ public:
     void loadNetwork();
     void processNoise();
     void processObservation();
+    void processDiscriminator();
     void feedforwardPolicy();
     void initVariable();
     Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
@@ -34,10 +35,13 @@ public:
     void checkTouchDown();
     Eigen::Vector3d quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v);
 
+    ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    static const int num_cur_state = 49; // 38 + 12
-    static const int num_cur_internal_state = 37;
+    // static const int num_cur_state = 49; // 37 + 12
+    static const int num_cur_state = 48; // 36 + 12
+    // static const int num_cur_internal_state = 37;
+    static const int num_cur_internal_state = 36;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
@@ -76,14 +80,38 @@ public:
     Eigen::MatrixXd state_buffer_;
     Eigen::MatrixXd state_mean_;
     Eigen::MatrixXd state_var_;
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    ///////////////////////////////////// Discriminator Network ///////////////////////////////////////
+    static const int num_disc_state = 34 * 2;
+    static const int num_disc_cur_state = 34;
+    static const int disc_output = 1;
+    static const int num_disc_hidden1 = 256;
+    static const int num_disc_hidden2 = 256;
+
+    Eigen::MatrixXd disc_net_w0_;
+    Eigen::MatrixXd disc_net_b0_;
+    Eigen::MatrixXd disc_net_w2_;
+    Eigen::MatrixXd disc_net_b2_;
+    Eigen::MatrixXd disc_net_w_;
+    Eigen::MatrixXd disc_net_b_;
+
+    Eigen::MatrixXd disc_hidden_layer1_;
+    Eigen::MatrixXd disc_hidden_layer2_;
+    double disc_value_;
+
+    Eigen::MatrixXd disc_state_;
+    Eigen::MatrixXd disc_state_buffer_;
+    Eigen::MatrixXd disc_state_cur_;
+    Eigen::MatrixXd disc_state_mean_;
+    Eigen::MatrixXd disc_state_var_;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
     std::ofstream writeFile;
-
-    float phase_ = 0.0;
-    float desired_vel_x = 0.0;
 
     bool is_on_robot_ = false;
     bool is_write_file_ = true;
+
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
@@ -127,9 +155,14 @@ public:
     ros::Subscriber joy_sub_;
     ros::Subscriber xbox_joy_sub_;
 
+    Eigen::Vector3d local_lin_vel_;
+
     double target_vel_x_ = 0.0;
     double target_vel_y_ = 0.0;
     double target_vel_yaw_ = 0.0;
+
+    float desired_vel_x = 0.0;
+    float desired_vel_yaw = 0.0;
 
 private:
     Eigen::VectorQd ControlVal_;
