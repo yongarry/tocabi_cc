@@ -83,8 +83,8 @@ public:
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////// Discriminator Network ///////////////////////////////////////
-    static const int num_disc_state = 34 * 2;
-    static const int num_disc_cur_state = 34;
+    static const int num_disc_state = 40 * 2; //34 * 2;
+    static const int num_disc_cur_state = 40; //34;
     static const int disc_output = 1;
     static const int num_disc_hidden1 = 256;
     static const int num_disc_hidden2 = 256;
@@ -98,7 +98,7 @@ public:
 
     Eigen::MatrixXd disc_hidden_layer1_;
     Eigen::MatrixXd disc_hidden_layer2_;
-    double disc_value_;
+    Eigen::MatrixXd disc_value_;
 
     Eigen::MatrixXd disc_state_;
     Eigen::MatrixXd disc_state_buffer_;

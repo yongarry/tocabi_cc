@@ -150,12 +150,13 @@ void CustomController::initVariable()
     disc_net_b0_.resize(num_disc_hidden1, 1);
     disc_net_w2_.resize(num_disc_hidden2, num_disc_hidden1);
     disc_net_b2_.resize(num_disc_hidden2, 1);    
-    disc_net_w_.resize(1, num_disc_hidden2);
-    disc_net_b_.resize(1, 1);
+    disc_net_w_.resize(disc_output, num_disc_hidden2);
+    disc_net_b_.resize(disc_output, 1);
 
     disc_hidden_layer1_.resize(num_disc_hidden1, 1);
     disc_hidden_layer2_.resize(num_disc_hidden2, 1);
-
+    disc_value_.resize(disc_output, 1);
+    
     disc_state_buffer_.resize(num_disc_cur_state*2, 1);
     disc_state_cur_.resize(num_disc_cur_state, 1);
     disc_state_.resize(num_disc_state, 1);
@@ -360,8 +361,40 @@ void CustomController::processObservation()
 
     state_cur_(data_idx) = target_vel_x_;
     // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.5, 1.5/20e6, 1.5/20e6);
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.4, 1.4/20e6, 1.4/20e6);
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.0, 1.0/20e6, 1.0/20e6);
     // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 30e6, 0.0, 1.5, 1.5/30e6, 1.5/30e6);
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, 0.4, 0.0, 0.0);
+    // desired_vel_x = 1.0;
+    // if (rd_cc_.control_time_us_ < start_time_ + 2e6) {
+    //     desired_vel_x = 0.1;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 4e6) {
+    //     desired_vel_x = 0.2;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 6e6) {
+    //     desired_vel_x = 0.3;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 8e6) {
+    //     desired_vel_x = 0.4;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 10e6) {
+    //     desired_vel_x = 0.5;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 12e6) {
+    //     desired_vel_x = 0.6;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 14e6) {
+    //     desired_vel_x = 0.7;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 16e6) {
+    //     desired_vel_x = 0.8;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 18e6) {
+    //     desired_vel_x = 0.9;
+    // }
+    // else if (rd_cc_.control_time_us_ < start_time_ + 20e6) {
+    //     desired_vel_x = 1.0;
+    // }
     // state_cur_(data_idx) = desired_vel_x;
     data_idx++;
     // state_cur_(data_idx) = target_vel_y_;
@@ -448,6 +481,20 @@ void CustomController::processDiscriminator()
     for (int i=0; i<3; i++)
     {
         disc_state_cur_(disc_data_idx) = euler_angle_(i);
+        disc_data_idx++;
+    }
+
+    // local base vel and  local ang vel
+    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    for (int i=0; i<3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
+        disc_data_idx++;
+    }
+    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    for (int i=0; i<3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = local_ang_vel_(i);
         disc_data_idx++;
     }
 
@@ -538,7 +585,7 @@ void CustomController::feedforwardPolicy()
             disc_hidden_layer2_(i) = 0.0;
     }
 
-    disc_value_ = (disc_net_w_ * disc_hidden_layer2_ + disc_net_b_)(0);
+    disc_value_ = (disc_net_w_ * disc_hidden_layer2_ + disc_net_b_);
 }
 
 void CustomController::computeSlow()
@@ -595,8 +642,13 @@ void CustomController::computeSlow()
                     std::cout << "Stop by Value Function" << std::endl;
                 }
             }
+            // soft max disc_value
+            // double sum = exp(disc_value_(1)) + exp(disc_value_(2)) + exp(disc_value_(3));
+            // Vector3d disc_value_softmax;
+            // disc_value_softmax << exp(disc_value_(1))/sum, exp(disc_value_(2))/sum, exp(disc_value_(3))/sum;
+            // cout << "Disc Value: " << disc_value_(0) << " " << disc_value_softmax.transpose() << endl;
             cout << "Disc: " << disc_value_ << endl;
-
+            
             checkTouchDown();
 
             if (is_write_file_)
@@ -694,14 +746,14 @@ void CustomController::copyRobotData(RobotData &rd_l)
 void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
 {
     // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.4, 0.8);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.5, 0.6);
     target_vel_y_ = 0.0; // DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
-    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->step_length_y, -0.3, 0.3);
+    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->step_length_y, -0.4, 0.4);
 }
 
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1], -0.5, 1.0);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1], -0.5, 0.5);
     target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.0, 0.0);
     target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3], -0.4, 0.4);
 }
