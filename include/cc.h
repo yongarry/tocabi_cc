@@ -5,7 +5,6 @@
 
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
-#include <tocabi_msgs/WalkingCommand.h>
 
 class CustomController
 {
@@ -38,16 +37,16 @@ public:
     ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    // static const int num_cur_state = 49; // 37 + 12
-    static const int num_cur_state = 48; // 36 + 12
-    // static const int num_cur_internal_state = 37;
-    static const int num_cur_internal_state = 36;
+    static const int num_cur_state = 49; // 37 + 12
+    // static const int num_cur_state = 48; // 36 + 12
+    static const int num_cur_internal_state = 37;
+    // static const int num_cur_internal_state = 36;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
     // static const int num_state = 59;
-    static const int num_hidden1 = 512;
-    static const int num_hidden2 = 512;
+    static const int num_hidden1 = 1024;
+    static const int num_hidden2 = 1024;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
@@ -83,11 +82,12 @@ public:
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////// Discriminator Network ///////////////////////////////////////
-    static const int num_disc_state = 40 * 2; //34 * 2;
-    static const int num_disc_cur_state = 40; //34;
+    static const int num_disc_state = 37 * 3; //40 * 2;
+    static const int num_disc_cur_state = 37; //40;
+    static const int num_disc_hist = 3;
     static const int disc_output = 1;
-    static const int num_disc_hidden1 = 256;
-    static const int num_disc_hidden2 = 256;
+    static const int num_disc_hidden1 = 512;
+    static const int num_disc_hidden2 = 512;
 
     Eigen::MatrixXd disc_net_w0_;
     Eigen::MatrixXd disc_net_b0_;
@@ -149,9 +149,8 @@ public:
     // Joystick
     ros::NodeHandle nh_;
 
-    void joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy);
+    void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     void xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy);
-    // void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     ros::Subscriber joy_sub_;
     ros::Subscriber xbox_joy_sub_;
 

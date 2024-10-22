@@ -23,8 +23,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     initVariable();
     loadNetwork();
 
-    // joy_sub_ = nh_.subscribe<tocabi_msgs::WalkingCommand>("/tocabi/pedalcommand", 10, &CustomController::joyCallback, this);
-    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
+    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
+    // xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -157,7 +157,7 @@ void CustomController::initVariable()
     disc_hidden_layer2_.resize(num_disc_hidden2, 1);
     disc_value_.resize(disc_output, 1);
     
-    disc_state_buffer_.resize(num_disc_cur_state*2, 1);
+    disc_state_buffer_.resize(num_disc_cur_state*num_disc_hist, 1);
     disc_state_cur_.resize(num_disc_cur_state, 1);
     disc_state_.resize(num_disc_state, 1);
     disc_state_mean_.resize(num_disc_state, 1);
@@ -260,149 +260,61 @@ void CustomController::processObservation()
     /*
     obs 
         1) root_h: root height (z)                  (1)     0
-        3) root_rot: root rotation                  (3)     2:8
-        4) root_vel: root linear velocity           (3)     8:11
-        5) root_ang_vel: root angular velocity      (3)     11:14
-        6) commands: x, y, yaw                      (3)     14:17
-        7) dof_pos: dof position                    (12)    17:29
-        8) dof_vel: dof velocity                    (12)    29:41
-        10) action: action                           (12)    47:59
+        2) root_rot: root rotation                  (3)     2:8
+        3) root_vel: local linear velocity          (3)     8:11
+        4) root_ang_vel: root angular velocity      (3)     11:14
+        5) commands: x, y, yaw                      (3)     14:17
+        6) dof_pos: dof position                    (12)    17:29
+        7) dof_vel: dof velocity                    (12)    29:41
+        8) action: action                           (12)    47:59
     */
 
     int data_idx = 0;
     
     // 1) root_h: root height (z)                  (1)     0 
-    // state_cur_(data_idx) = rd_cc_.q_virtual_(2);
-    // data_idx++;
+    state_cur_(data_idx) = rd_cc_.q_virtual_(2);
+    data_idx++;
 
+
+    // 2) root_rot: root rotation                  (3)     2:8
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
     q.y() = rd_cc_.q_virtual_(4);
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
-    // 3) root_rot: root rotation                  (3)     2:8
     euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-
     state_cur_(data_idx) = euler_angle_(0);
     data_idx++;
-
     state_cur_(data_idx) = euler_angle_(1);
     data_idx++;
-
     state_cur_(data_idx) = euler_angle_(2);
     data_idx++;
 
+
     // 4) root_vel: root linear velocity           (3)     8:11
     // 5) root_ang_vel: root angular velocity      (3)     11:14    
-    
-    local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    for (int i=0; i<3; i++)
+    for (int i=0; i<6; i++)
     {
-        state_cur_(data_idx) = local_lin_vel_(i);
-        data_idx++;
-    }    
-    for (int i=0; i<3; i++)
-    {
-        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i+3);
+        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
         data_idx++;
     }
+    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
+    //     disc_data_idx++;
+    // }
+
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    // if (rd_cc_.control_time_us_ < start_time_ + 10e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5e6, 0.0, 1.0, 0.0, 0.0);
-    //     desired_vel_yaw = 0.0;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 15e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 10e6, start_time_ + 14e6, 1.0, 0.0, 0.0, 0.0);
-    //     desired_vel_yaw = 0.0;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 25e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 15e6, start_time_ + 20e6, 0.0, -0.5, 0.0, 0.0);
-    //     desired_vel_yaw = 0.0;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 40e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_ + 25e6, start_time_ + 26e6, -0.5, 0.0, 0.0, 0.0);
-    //     desired_vel_yaw = -0.4;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 50e6) {
-    //     desired_vel_x = 0.0;
-    //     desired_vel_yaw = 0.4;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 60e6) {
-    //     desired_vel_x = 0.5;
-    //     desired_vel_yaw = -0.4;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 70e6) {
-    //     desired_vel_x = 0.5;
-    //     desired_vel_yaw = 0.4;
-    // }
-    // else {
-    //     desired_vel_x = 0.0;
-    //     desired_vel_yaw = 0.0;
-    // }
-
-    // if (rd_cc_.control_time_us_ < start_time_ + 20e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 0.8, 0.8/20e6, 0.8/20e6);
-    //     desired_vel_yaw = 0.0;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 48e6) {
-    //     desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_+20e6, start_time_ + 48e6, 0.8, -0.4, 1.2/28e6, 1.2/28e6);
-    //     desired_vel_yaw = 0.0;
-    // }
-    
-
-    // state_cur_(data_idx) = desired_vel_x;
-    // data_idx++;
-    // state_cur_(data_idx) = 0.0;
-    // data_idx++;
-    // state_cur_(data_idx) = desired_vel_yaw;
-    // data_idx++;
-
     state_cur_(data_idx) = target_vel_x_;
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.5, 1.5/20e6, 1.5/20e6);
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 20e6, 0.0, 1.0, 1.0/20e6, 1.0/20e6);
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 30e6, 0.0, 1.5, 1.5/30e6, 1.5/30e6);
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1e6, 0.0, 0.4, 0.0, 0.0);
-    // desired_vel_x = 1.0;
-    // if (rd_cc_.control_time_us_ < start_time_ + 2e6) {
-    //     desired_vel_x = 0.1;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 4e6) {
-    //     desired_vel_x = 0.2;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 6e6) {
-    //     desired_vel_x = 0.3;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 8e6) {
-    //     desired_vel_x = 0.4;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 10e6) {
-    //     desired_vel_x = 0.5;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 12e6) {
-    //     desired_vel_x = 0.6;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 14e6) {
-    //     desired_vel_x = 0.7;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 16e6) {
-    //     desired_vel_x = 0.8;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 18e6) {
-    //     desired_vel_x = 0.9;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 20e6) {
-    //     desired_vel_x = 1.0;
-    // }
-    // state_cur_(data_idx) = desired_vel_x;
     data_idx++;
-    // state_cur_(data_idx) = target_vel_y_;
     state_cur_(data_idx) = 0.0;
     data_idx++;
     state_cur_(data_idx) = target_vel_yaw_;
-    // state_cur_(data_idx) = 0.0;
     data_idx++;
+
 
     // 7) dof_pos: dof position                    (12)    17:29
     for (int i = 0; i < num_actuator_action; i++)
@@ -410,6 +322,7 @@ void CustomController::processObservation()
         state_cur_(data_idx) = q_noise_(i);
         data_idx++;
     }
+
 
     // 8) dof_vel: dof velocity                    (12)    29:41
     for (int i = 0; i < num_actuator_action; i++)
@@ -425,6 +338,7 @@ void CustomController::processObservation()
         data_idx++;
     }
 
+
     // 10) action: action                           (12)    47:59
     for (int i = 0; i <num_actuator_action; i++) 
     {
@@ -432,9 +346,7 @@ void CustomController::processObservation()
         data_idx++;
     }
     
-    // state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(num_actuator_action), 0.0, 1.0);
-    // data_idx++;
-    
+
     state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
     state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
 
@@ -466,9 +378,11 @@ void CustomController::processDiscriminator()
     */
     int disc_data_idx = 0;
 
+
     // 1) root_h
     disc_state_cur_(disc_data_idx) = rd_cc_.q_virtual_(2);
     disc_data_idx++;
+
 
     // 2) base euler
     Eigen::Quaterniond q;
@@ -476,27 +390,42 @@ void CustomController::processDiscriminator()
     q.y() = rd_cc_.q_virtual_(4);
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
-    euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
 
-    for (int i=0; i<3; i++)
+    Vector3d tan_vec, nor_vec;
+    quatToTanNorm(q, tan_vec, nor_vec);
+    for (int i = 0; i < 3; i++)
     {
-        disc_state_cur_(disc_data_idx) = euler_angle_(i);
+        disc_state_cur_(disc_data_idx) = tan_vec(i);
         disc_data_idx++;
     }
+    for (int i = 0; i < 3; i++)
+    {
+        disc_state_cur_(disc_data_idx) = nor_vec(i);
+        disc_data_idx++;
+    }
+
+    // euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
+    // for (int i=0; i<3; i++)
+    // {
+    //     disc_state_cur_(disc_data_idx) = euler_angle_(i);
+    //     disc_data_idx++;
+    // }
+
 
     // local base vel and  local ang vel
-    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    for (int i=0; i<3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
-        disc_data_idx++;
-    }
-    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    for (int i=0; i<3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = local_ang_vel_(i);
-        disc_data_idx++;
-    }
+    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
+    //     disc_data_idx++;
+    // }
+    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     disc_state_cur_(disc_data_idx) = local_ang_vel_(i);
+    //     disc_data_idx++;
+    // }
+
 
     // 3) q pos
     for (int i = 0; i < 12; i++)
@@ -505,6 +434,7 @@ void CustomController::processDiscriminator()
         disc_data_idx++;
     }    
 
+
     // 4) q vel
     for (int i = 0; i < 12; i++)
     {
@@ -512,13 +442,12 @@ void CustomController::processDiscriminator()
         disc_data_idx++;
     }
 
+
     // 5) local key pos
     Vector3d global_lfoot_pos = rd_cc_.link_[Left_Foot].xpos;
     Vector3d global_rfoot_pos = rd_cc_.link_[Right_Foot].xpos;
-
     Vector3d local_lfoot_pos = quatRotateInverse(q, global_lfoot_pos - rd_cc_.q_virtual_.head(3));
     Vector3d local_rfoot_pos = quatRotateInverse(q, global_rfoot_pos - rd_cc_.q_virtual_.head(3));
-
     for (int i = 0; i < 3; i++)
     {
         disc_state_cur_(disc_data_idx) = local_lfoot_pos(i);
@@ -530,7 +459,8 @@ void CustomController::processDiscriminator()
         disc_data_idx++;
     }
 
-    disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state,1) = disc_state_buffer_.block(0, 0, num_disc_cur_state,1); 
+
+    disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state*(num_disc_hist-1),1) = disc_state_buffer_.block(0, 0, num_disc_cur_state*(num_disc_hist-1),1); 
     disc_state_buffer_.block(0, 0, num_disc_cur_state,1) = disc_state_cur_;
 
     disc_state_ = (disc_state_buffer_ - disc_state_mean_).array() / (disc_state_var_.array() + 1e-05).sqrt();   
@@ -622,7 +552,7 @@ void CustomController::computeSlow()
         processNoise();
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
+        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/125.0 - 1/10000.0)
         {
             processObservation();
             processDiscriminator();
@@ -631,7 +561,7 @@ void CustomController::computeSlow()
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
             // cout << "Value: " << value_ << endl;
-            if (value_ < -10.0)
+            if (value_ < -1.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -671,6 +601,7 @@ void CustomController::computeSlow()
                 writeFile << target_vel_x_ << "\t";
                 writeFile << desired_vel_x << "\t";       
                 writeFile << local_lin_vel_(0) << "\t";
+                writeFile << disc_value_(0) << "\t";
 
                 writeFile << target_vel_yaw_ << "\t";
                 writeFile << desired_vel_yaw << "\t";
@@ -685,7 +616,9 @@ void CustomController::computeSlow()
                 // print contact force
                 // writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
                 writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
-                
+                for (int i = 0; i < num_actuator_action; i++) {
+                    writeFile << "\t" << torque_rl_(i);
+                }                
                 writeFile << std::endl;
             }
             
@@ -743,12 +676,11 @@ void CustomController::copyRobotData(RobotData &rd_l)
     std::memcpy(&rd_cc_, &rd_l, sizeof(RobotData));
 }
 
-void CustomController::joyCallback(const tocabi_msgs::WalkingCommand::ConstPtr& joy)
+void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    // target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 1.0);
-    target_vel_x_ = DyrosMath::minmax_cut(joy->step_length_x, -0.5, 0.6);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 0.5);
     target_vel_y_ = 0.0; // DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
-    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->step_length_y, -0.4, 0.4);
+    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->axes[2], -0.5, 0.5);
 }
 
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
@@ -761,7 +693,7 @@ void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {
     // Reference direction and normal vectors
     Eigen::Vector3d refDirection(1, 0, 0); // Tangent vector reference
-    Eigen::Vector3d refNormal(0, 1, 0);    // Normal vector reference
+    Eigen::Vector3d refNormal(0, 0, 1);    // Normal vector reference
 
     // Rotate the reference vectors
     tangent = quaternion * refDirection;
