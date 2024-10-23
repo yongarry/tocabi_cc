@@ -23,8 +23,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     initVariable();
     loadNetwork();
 
-    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
-    // xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
+    // joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
+    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -540,19 +540,20 @@ void CustomController::computeSlow()
 
             processNoise();
             processObservation();
+            processDiscriminator();
             feedforwardPolicy();
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
                 // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
                 state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1).setZero();
             }
-            disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state,1).setZero();
+            disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state*(num_disc_hist-1),1)= disc_state_buffer_.block(0, 0, num_disc_cur_state*(num_disc_hist-1),1);
         }
 
         processNoise();
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/125.0 - 1/10000.0)
+        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
         {
             processObservation();
             processDiscriminator();
@@ -560,8 +561,8 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            // cout << "Value: " << value_ << endl;
-            if (value_ < -1.0)
+            cout << "Value: " << value_ << endl;
+            if (value_ < -10.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -577,8 +578,17 @@ void CustomController::computeSlow()
             // Vector3d disc_value_softmax;
             // disc_value_softmax << exp(disc_value_(1))/sum, exp(disc_value_(2))/sum, exp(disc_value_(3))/sum;
             // cout << "Disc Value: " << disc_value_(0) << " " << disc_value_softmax.transpose() << endl;
-            cout << "Disc: " << disc_value_ << endl;
-            
+            if (disc_value_(0) < -0.5)
+            {
+                cout << "Disc: " << disc_value_(0) << endl;
+                if (stop_by_value_thres_ == false)
+                {
+                    stop_by_value_thres_ = true;
+                    stop_start_time_ = rd_cc_.control_time_us_;
+                    q_stop_ = q_noise_;
+                    std::cout << "Stop by Disc Function" << std::endl;
+                }
+            }
             checkTouchDown();
 
             if (is_write_file_)
