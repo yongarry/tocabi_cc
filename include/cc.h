@@ -44,9 +44,8 @@ public:
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
-    // static const int num_state = 59;
-    static const int num_hidden1 = 1024;
-    static const int num_hidden2 = 1024;
+    static const int num_hidden1 = 512;
+    static const int num_hidden2 = 512;
 
     Eigen::MatrixXd policy_net_w0_;
     Eigen::MatrixXd policy_net_b0_;
@@ -79,15 +78,17 @@ public:
     Eigen::MatrixXd state_buffer_;
     Eigen::MatrixXd state_mean_;
     Eigen::MatrixXd state_var_;
+    Eigen::MatrixXd value_mean_;
+    Eigen::MatrixXd value_var_;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////// Discriminator Network ///////////////////////////////////////
-    static const int num_disc_state = 37 * 3; //40 * 2;
+    static const int num_disc_state = 37 * 2; //40 * 2;
     static const int num_disc_cur_state = 37; //40;
-    static const int num_disc_hist = 3;
+    static const int num_disc_hist = 2;
     static const int disc_output = 1;
-    static const int num_disc_hidden1 = 512;
-    static const int num_disc_hidden2 = 512;
+    static const int num_disc_hidden1 = 256;
+    static const int num_disc_hidden2 = 256;
 
     Eigen::MatrixXd disc_net_w0_;
     Eigen::MatrixXd disc_net_b0_;

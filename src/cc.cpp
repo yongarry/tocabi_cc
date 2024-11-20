@@ -23,8 +23,8 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
     initVariable();
     loadNetwork();
 
-    // joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
-    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
+    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
+    // xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -44,7 +44,7 @@ void CustomController::loadNetwork()
     {
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/weight/";
     }
-    std::ifstream file[22];
+    std::ifstream file[24];
 
     file[0].open(cur_path+"a2c_network_actor_mlp_0_weight.txt", std::ios::in);
     file[1].open(cur_path+"a2c_network_actor_mlp_0_bias.txt", std::ios::in);
@@ -69,6 +69,9 @@ void CustomController::loadNetwork()
     file[19].open(cur_path+"a2c_network__disc_logits_bias.txt", std::ios::in);
     file[20].open(cur_path+"amp_running_mean_std_running_mean.txt", std::ios::in);
     file[21].open(cur_path+"amp_running_mean_std_running_var.txt", std::ios::in);
+
+    file[22].open(cur_path+"value_mean_std_running_mean.txt", std::ios::in);
+    file[23].open(cur_path+"value_mean_std_running_var.txt", std::ios::in);
 
 
     if(!file[0].is_open())
@@ -98,12 +101,15 @@ void CustomController::loadNetwork()
     loadMatrix(file[5], action_net_b_);
     loadMatrix(file[6], state_mean_);
     loadMatrix(file[7], state_var_);
+
     loadMatrix(file[8], value_net_w0_);
     loadMatrix(file[9], value_net_b0_);
     loadMatrix(file[10], value_net_w2_);
     loadMatrix(file[11], value_net_b2_);
     loadMatrix(file[12], value_net_w_);
     loadMatrix(file[13], value_net_b_);  
+    loadMatrix(file[22], value_mean_);
+    loadMatrix(file[23], value_var_);
 
     loadMatrix(file[14], disc_net_w0_);
     loadMatrix(file[15], disc_net_b0_);
@@ -144,6 +150,8 @@ void CustomController::initVariable()
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
     state_mean_.resize(num_state, 1);
     state_var_.resize(num_state, 1);
+    value_mean_.resize(1, 1);
+    value_var_.resize(1, 1);
 
     // Discriminator Network
     disc_net_w0_.resize(num_disc_hidden1, num_disc_state);
@@ -312,6 +320,7 @@ void CustomController::processObservation()
     data_idx++;
     state_cur_(data_idx) = 0.0;
     data_idx++;
+    // state_cur_(data_idx) = 0.0;
     state_cur_(data_idx) = target_vel_yaw_;
     data_idx++;
 
@@ -498,7 +507,7 @@ void CustomController::feedforwardPolicy()
             value_hidden_layer2_(i) = 0.0;
     }
 
-    value_ = (value_net_w_ * value_hidden_layer2_ + value_net_b_)(0);
+    value_ = (value_net_w_ * value_hidden_layer2_ + value_net_b_)(0) * value_var_.array().sqrt()(0) + value_mean_(0);
 
     // Discriminator
     disc_hidden_layer1_ = disc_net_w0_ * disc_state_ + disc_net_b0_;
@@ -561,34 +570,34 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            cout << "Value: " << value_ << endl;
-            if (value_ < -10.0)
-            {
-                cout << "Value: " << value_ << endl;
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Value Function" << std::endl;
-                }
-            }
+            // cout << "Value: " << value_ << endl;
+            // if (value_ < 80.0)
+            // {
+            //     cout << "Value: " << value_ << endl;
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Value Function" << std::endl;
+            //     }
+            // }
             // soft max disc_value
             // double sum = exp(disc_value_(1)) + exp(disc_value_(2)) + exp(disc_value_(3));
             // Vector3d disc_value_softmax;
             // disc_value_softmax << exp(disc_value_(1))/sum, exp(disc_value_(2))/sum, exp(disc_value_(3))/sum;
             // cout << "Disc Value: " << disc_value_(0) << " " << disc_value_softmax.transpose() << endl;
-            if (disc_value_(0) < -0.5)
-            {
-                cout << "Disc: " << disc_value_(0) << endl;
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Disc Function" << std::endl;
-                }
-            }
+            // if (disc_value_(0) < -1.2)
+            // {
+            //     cout << "Disc: " << disc_value_(0) << endl;
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Disc Function" << std::endl;
+            //     }
+            // }
             checkTouchDown();
 
             if (is_write_file_)
