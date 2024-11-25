@@ -42,7 +42,7 @@ public:
     static const int num_cur_internal_state = 37;
     // static const int num_cur_internal_state = 36;
     static const int num_state_skip = 2;
-    static const int num_state_hist = 10;
+    static const int num_state_hist = 3;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
     static const int num_hidden1 = 512;
     static const int num_hidden2 = 512;
@@ -111,7 +111,7 @@ public:
     std::ofstream writeFile;
 
     bool is_on_robot_ = false;
-    bool is_write_file_ = true;
+    bool is_write_file_ = false;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
