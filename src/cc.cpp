@@ -316,8 +316,8 @@ void CustomController::processObservation()
 
 
     // 6) commands: x, y, yaw                      (3)     14:17
-    // double desired_x = 0.4;
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 1.0e6, 0.0, desired_x, 0.0, 0.0);
+    // double desired_x = 0.3;
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 2.0e6, 0.0, desired_x, 0.0, 0.0);
     // state_cur_(data_idx) = desired_vel_x;
     state_cur_(data_idx) = target_vel_x_;
     data_idx++;
@@ -374,8 +374,8 @@ void CustomController::processObservation()
     }
 
     // Normalization of State
-    // state_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-    state_ = (state_ - state_mean_).array() / (state_var_.array() + 1e-05).sqrt();
+    state_norm_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
+    // state_norm_ = (state_ - state_mean_).array() / (state_var_.array() + 1e-05).sqrt();
 
 }
 
@@ -480,7 +480,7 @@ void CustomController::processDiscriminator()
 
 void CustomController::feedforwardPolicy()
 {
-    hidden_layer1_ = policy_net_w0_ * state_ + policy_net_b0_;
+    hidden_layer1_ = policy_net_w0_ * state_norm_ + policy_net_b0_;
     for (int i = 0; i < num_hidden1; i++) 
     {
         if (hidden_layer1_(i) < 0)
@@ -496,7 +496,7 @@ void CustomController::feedforwardPolicy()
 
     rl_action_ = action_net_w_ * hidden_layer2_ + action_net_b_;
 
-    value_hidden_layer1_ = value_net_w0_ * state_ + value_net_b0_;
+    value_hidden_layer1_ = value_net_w0_ * state_norm_ + value_net_b0_;
     for (int i = 0; i < num_hidden1; i++) 
     {
         if (value_hidden_layer1_(i) < 0)
@@ -557,7 +557,7 @@ void CustomController::computeSlow()
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
                 // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-                state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1).setZero();
+                state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
             }
             // disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state*(num_disc_hist-1),1)= disc_state_buffer_.block(0, 0, num_disc_cur_state*(num_disc_hist-1),1);
         }
@@ -573,8 +573,7 @@ void CustomController::computeSlow()
             
             // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
 
-            // cout << "Value: " << value_ << endl;
-            if (value_ < 30.0)
+            if (value_ < 100.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -604,6 +603,7 @@ void CustomController::computeSlow()
 
             if (is_write_file_)
             {
+                writeFile << rd_cc_.q_virtual_(2) << "\t";
                 // for (int i = 0; i < 3; i++) {
                     // writeFile << rd_cc_.q_virtual_(i) << "\t";
                 // }
@@ -706,9 +706,9 @@ void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1], -0.5, 0.5);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1]*0.5, -0.5, 0.5);
     target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.0, 0.0);
-    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3], -0.4, 0.4);
+    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3]*0.5, -0.4, 0.4);
 }
 
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {
