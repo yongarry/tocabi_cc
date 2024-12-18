@@ -73,11 +73,11 @@ void CustomController::initVariable()
 
 void CustomController::loadOnnX()
 {
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/policies/" + weight_dir_;
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
 
     if (is_on_robot_)
     {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/policies/TocabiAMPLower.onnx";
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/policy/TocabiAMPLower.onnx";
     }
 
     Ort::SessionOptions session_options;
