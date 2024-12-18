@@ -6,6 +6,8 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
 
+#include "onnxruntime_cxx_api.h"
+
 class CustomController
 {
 public:
@@ -22,17 +24,34 @@ public:
     RobotData &rd_;
     RobotData rd_cc_;
 
-    //////////////////////////////////////////// Donghyeon RL /////////////////////////////////////////
-    void loadNetwork();
+    void loadOnnX();
     void processNoise();
     void processObservation();
     void processDiscriminator();
     void feedforwardPolicy();
     void initVariable();
-    Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
+    
     void quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal);
-    void checkTouchDown();
+    Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
     Eigen::Vector3d quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v);
+
+
+    /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
+    // Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+    // Ort::SessionOptions session_options;
+    // Ort::Session session(env, weight_dir_ + "policy.onnx", session_options);
+
+    // Ort::AllocatorWithDefaultOptions allocator;
+    // Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+    size_t input_number, output_number;
+    std::vector<std::string> input_names, output_names;
+    std::vector<const char *> input_names_char, output_names_char;
+    std::vector<Ort::Value> input_tensors, output_tensors;
+
+    std::vector<std::vector<float>> input_states_buffer;
+    std::vector<float> state_cur_, state_buffer_;
+
 
     ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
@@ -44,71 +63,17 @@ public:
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
-    static const int num_hidden1 = 512;
-    static const int num_hidden2 = 512;
 
-    Eigen::MatrixXd policy_net_w0_;
-    Eigen::MatrixXd policy_net_b0_;
-    Eigen::MatrixXd policy_net_w2_;
-    Eigen::MatrixXd policy_net_b2_;
-    Eigen::MatrixXd action_net_w_;
-    Eigen::MatrixXd action_net_b_;
-
-    Eigen::MatrixXd hidden_layer1_;
-    Eigen::MatrixXd hidden_layer2_;
     Eigen::MatrixXd rl_action_;
 
-    Eigen::MatrixXd value_net_w0_;
-    Eigen::MatrixXd value_net_b0_;
-    Eigen::MatrixXd value_net_w2_;
-    Eigen::MatrixXd value_net_b2_;
-    Eigen::MatrixXd value_net_w_;
-    Eigen::MatrixXd value_net_b_;
-
-    Eigen::MatrixXd value_hidden_layer1_;
-    Eigen::MatrixXd value_hidden_layer2_;
     double value_;
 
     bool stop_by_value_thres_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_stop_;
     float stop_start_time_;
     
-    Eigen::MatrixXd state_;
-    Eigen::MatrixXd state_norm_;
-    Eigen::MatrixXd state_cur_;
-    Eigen::MatrixXd state_buffer_;
-    Eigen::MatrixXd state_mean_;
-    Eigen::MatrixXd state_var_;
-    Eigen::MatrixXd value_mean_;
-    Eigen::MatrixXd value_var_;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    ///////////////////////////////////// Discriminator Network ///////////////////////////////////////
-    static const int num_disc_state = 37 * 2; //40 * 2;
-    static const int num_disc_cur_state = 37; //40;
-    static const int num_disc_hist = 2;
-    static const int disc_output = 1;
-    static const int num_disc_hidden1 = 256;
-    static const int num_disc_hidden2 = 256;
-
-    Eigen::MatrixXd disc_net_w0_;
-    Eigen::MatrixXd disc_net_b0_;
-    Eigen::MatrixXd disc_net_w2_;
-    Eigen::MatrixXd disc_net_b2_;
-    Eigen::MatrixXd disc_net_w_;
-    Eigen::MatrixXd disc_net_b_;
-
-    Eigen::MatrixXd disc_hidden_layer1_;
-    Eigen::MatrixXd disc_hidden_layer2_;
-    Eigen::MatrixXd disc_value_;
-
-    Eigen::MatrixXd disc_state_;
-    Eigen::MatrixXd disc_state_buffer_;
-    Eigen::MatrixXd disc_state_cur_;
-    Eigen::MatrixXd disc_state_mean_;
-    Eigen::MatrixXd disc_state_var_;
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
     std::ofstream writeFile;
 
     bool is_on_robot_ = false;
@@ -167,4 +132,8 @@ public:
 
 private:
     Eigen::VectorQd ControlVal_;
+
+    Ort::Env env; // Add the Ort::Env as a member if needed
+    Ort::Session session; // Add Ort::Session as a member
+    Ort::MemoryInfo memory_info; // Add memory info as a member
 };

@@ -10,6 +10,11 @@ tocabi_msgs
 eigen_conversions
 )
 
+# Set the path to ONNX Runtime
+set(ONNXRUNTIME_DIR "/home/yong20/Downloads/onnxruntime-linux") # Replace with the actual path to your onnxruntime installation
+include_directories(${ONNXRUNTIME_DIR}/include)
+link_directories(${ONNXRUNTIME_DIR}/lib) # Adjust to match the library directory
+
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
@@ -31,8 +36,12 @@ add_library(${PROJECT_NAME}
 )
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-target_link_libraries(${PROJECT_NAME}
+# Link with catkin and ONNX Runtime libraries
+target_include_directories(${PROJECT_NAME} PUBLIC ${ONNXRUNTIME_DIR}/include)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC
   ${catkin_LIBRARIES}
+  ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so
 )
 
 install(TARGETS ${PROJECT_NAME}

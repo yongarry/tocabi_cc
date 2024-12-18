@@ -2,12 +2,16 @@
 
 using namespace TOCABI;
 
-CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
-{
+CustomController::CustomController(RobotData &rd) 
+    :   rd_(rd), //, wbc_(dc.wbc_)
+        env(ORT_LOGGING_LEVEL_VERBOSE, "tocabi"),
+        memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
+        session(nullptr)
+{    
     ControlVal_.setZero();
 
     nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
-
+    
     if (is_write_file_)
     {
         if (is_on_robot_)
@@ -21,156 +25,42 @@ CustomController::CustomController(RobotData &rd) : rd_(rd) //, wbc_(dc.wbc_)
         writeFile << std::fixed << std::setprecision(8);
     }
     initVariable();
-    loadNetwork();
+    loadOnnX();
 
     // joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
     xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
-Eigen::VectorQd CustomController::getControl()
-{
-    return ControlVal_;
-}
-
-void CustomController::loadNetwork()
-{
-    state_.setZero();
-    rl_action_.setZero();
-
-
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/" + weight_dir_;
-
-    if (is_on_robot_)
-    {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/weight/";
-    }
-    std::ifstream file[24];
-
-    file[0].open(cur_path+"a2c_network_actor_mlp_0_weight.txt", std::ios::in);
-    file[1].open(cur_path+"a2c_network_actor_mlp_0_bias.txt", std::ios::in);
-    file[2].open(cur_path+"a2c_network_actor_mlp_2_weight.txt", std::ios::in);
-    file[3].open(cur_path+"a2c_network_actor_mlp_2_bias.txt", std::ios::in);
-    file[4].open(cur_path+"a2c_network_mu_weight.txt", std::ios::in);
-    file[5].open(cur_path+"a2c_network_mu_bias.txt", std::ios::in);
-    file[6].open(cur_path+"running_mean_std_running_mean.txt", std::ios::in);
-    file[7].open(cur_path+"running_mean_std_running_var.txt", std::ios::in);
-    file[8].open(cur_path+"a2c_network_critic_mlp_0_weight.txt", std::ios::in);
-    file[9].open(cur_path+"a2c_network_critic_mlp_0_bias.txt", std::ios::in);
-    file[10].open(cur_path+"a2c_network_critic_mlp_2_weight.txt", std::ios::in);
-    file[11].open(cur_path+"a2c_network_critic_mlp_2_bias.txt", std::ios::in);
-    file[12].open(cur_path+"a2c_network_value_weight.txt", std::ios::in);
-    file[13].open(cur_path+"a2c_network_value_bias.txt", std::ios::in);
-
-    file[14].open(cur_path+"a2c_network__disc_mlp_0_weight.txt", std::ios::in);
-    file[15].open(cur_path+"a2c_network__disc_mlp_0_bias.txt", std::ios::in);
-    file[16].open(cur_path+"a2c_network__disc_mlp_2_weight.txt", std::ios::in);
-    file[17].open(cur_path+"a2c_network__disc_mlp_2_bias.txt", std::ios::in);
-    file[18].open(cur_path+"a2c_network__disc_logits_weight.txt", std::ios::in);
-    file[19].open(cur_path+"a2c_network__disc_logits_bias.txt", std::ios::in);
-    file[20].open(cur_path+"amp_running_mean_std_running_mean.txt", std::ios::in);
-    file[21].open(cur_path+"amp_running_mean_std_running_var.txt", std::ios::in);
-
-    file[22].open(cur_path+"value_mean_std_running_mean.txt", std::ios::in);
-    file[23].open(cur_path+"value_mean_std_running_var.txt", std::ios::in);
-
-
-    if(!file[0].is_open())
-    {
-        std::cout<<"Can not find the weight file"<<std::endl;
-    }
-
-    float temp;
-    auto loadMatrix = [&](std::ifstream& file, Eigen::MatrixXd& matrix) {
-        int row = 0, col = 0;
-        while (!file.eof() && row != matrix.rows()) {
-            file >> temp;
-            if (file.fail()) break; // Ensure we don't read past the end of file
-            matrix(row, col) = temp;
-            col++;
-            if (col == matrix.cols()) {
-                col = 0;
-                row++;
-            }
-        }
-    };
-    loadMatrix(file[0], policy_net_w0_);
-    loadMatrix(file[1], policy_net_b0_);
-    loadMatrix(file[2], policy_net_w2_);
-    loadMatrix(file[3], policy_net_b2_);
-    loadMatrix(file[4], action_net_w_);
-    loadMatrix(file[5], action_net_b_);
-    loadMatrix(file[6], state_mean_);
-    loadMatrix(file[7], state_var_);
-
-    loadMatrix(file[8], value_net_w0_);
-    loadMatrix(file[9], value_net_b0_);
-    loadMatrix(file[10], value_net_w2_);
-    loadMatrix(file[11], value_net_b2_);
-    loadMatrix(file[12], value_net_w_);
-    loadMatrix(file[13], value_net_b_);  
-    loadMatrix(file[22], value_mean_);
-    loadMatrix(file[23], value_var_);
-
-    loadMatrix(file[14], disc_net_w0_);
-    loadMatrix(file[15], disc_net_b0_);
-    loadMatrix(file[16], disc_net_w2_);
-    loadMatrix(file[17], disc_net_b2_);
-    loadMatrix(file[18], disc_net_w_);
-    loadMatrix(file[19], disc_net_b_);
-    loadMatrix(file[20], disc_state_mean_);
-    loadMatrix(file[21], disc_state_var_);    
-
-}
-
 void CustomController::initVariable()
 {    
-    policy_net_w0_.resize(num_hidden1, num_state);
-    policy_net_b0_.resize(num_hidden1, 1);
-    policy_net_w2_.resize(num_hidden2, num_hidden1);
-    policy_net_b2_.resize(num_hidden2, 1);
-    action_net_w_.resize(num_action, num_hidden2);
-    action_net_b_.resize(num_action, 1);
+    // policy_net_w0_.resize(num_hidden1, num_state);
+    // policy_net_b0_.resize(num_hidden1, 1);
+    // policy_net_w2_.resize(num_hidden2, num_hidden1);
+    // policy_net_b2_.resize(num_hidden2, 1);
+    // action_net_w_.resize(num_action, num_hidden2);
+    // action_net_b_.resize(num_action, 1);
 
-    hidden_layer1_.resize(num_hidden1, 1);
-    hidden_layer2_.resize(num_hidden2, 1);
+    // hidden_layer1_.resize(num_hidden1, 1);
+    // hidden_layer2_.resize(num_hidden2, 1);
     rl_action_.resize(num_action, 1);
 
-    value_net_w0_.resize(num_hidden1, num_state);
-    value_net_b0_.resize(num_hidden1, 1);
-    value_net_w2_.resize(num_hidden2, num_hidden1);
-    value_net_b2_.resize(num_hidden2, 1);
-    value_net_w_.resize(1, num_hidden2);
-    value_net_b_.resize(1, 1);
+    // value_net_w0_.resize(num_hidden1, num_state);
+    // value_net_b0_.resize(num_hidden1, 1);
+    // value_net_w2_.resize(num_hidden2, num_hidden1);
+    // value_net_b2_.resize(num_hidden2, 1);
+    // value_net_w_.resize(1, num_hidden2);
+    // value_net_b_.resize(1, 1);
 
-    value_hidden_layer1_.resize(num_hidden1, 1);
-    value_hidden_layer2_.resize(num_hidden2, 1);
+    // value_hidden_layer1_.resize(num_hidden1, 1);
+    // value_hidden_layer2_.resize(num_hidden2, 1);
     
     state_cur_.resize(num_cur_state, 1);
-    state_.resize(num_state, 1);
+    // state_.resize(num_state, 1);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
-    state_mean_.resize(num_state, 1);
-    state_var_.resize(num_state, 1);
-    value_mean_.resize(1, 1);
-    value_var_.resize(1, 1);
-
-    // Discriminator Network
-    disc_net_w0_.resize(num_disc_hidden1, num_disc_state);
-    disc_net_b0_.resize(num_disc_hidden1, 1);
-    disc_net_w2_.resize(num_disc_hidden2, num_disc_hidden1);
-    disc_net_b2_.resize(num_disc_hidden2, 1);    
-    disc_net_w_.resize(disc_output, num_disc_hidden2);
-    disc_net_b_.resize(disc_output, 1);
-
-    disc_hidden_layer1_.resize(num_disc_hidden1, 1);
-    disc_hidden_layer2_.resize(num_disc_hidden2, 1);
-    disc_value_.resize(disc_output, 1);
-    
-    disc_state_buffer_.resize(num_disc_cur_state*num_disc_hist, 1);
-    disc_state_cur_.resize(num_disc_cur_state, 1);
-    disc_state_.resize(num_disc_state, 1);
-    disc_state_mean_.resize(num_disc_state, 1);
-    disc_state_var_.resize(num_disc_state, 1);
-
+    // state_mean_.resize(num_state, 1);
+    // state_var_.resize(num_state, 1);
+    // value_mean_.resize(1, 1);
+    // value_var_.resize(1, 1);
 
     q_dot_lpf_.setZero();
 
@@ -204,24 +94,70 @@ void CustomController::initVariable()
                         10.0, 28.0, 10.0, 10.0, 10.0, 10.0, 3.0, 3.0;
 }
 
-Eigen::Vector3d CustomController::mat2euler(Eigen::Matrix3d mat)
-{
-    Eigen::Vector3d euler;
 
-    double cy = std::sqrt(mat(2, 2) * mat(2, 2) + mat(1, 2) * mat(1, 2));
-    if (cy > std::numeric_limits<double>::epsilon())
+void CustomController::loadOnnX()
+{
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/policies/" + weight_dir_;
+
+    if (is_on_robot_)
     {
-        euler(2) = -atan2(mat(0, 1), mat(0, 0));
-        euler(1) =  -atan2(-mat(0, 2), cy);
-        euler(0) = -atan2(mat(1, 2), mat(2, 2));
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/policies/TocabiAMPLower.onnx";
     }
-    else
-    {
-        euler(2) = -atan2(-mat(1, 0), mat(1, 1));
-        euler(1) =  -atan2(-mat(0, 2), cy);
-        euler(0) = 0.0;
+
+    Ort::SessionOptions session_options;
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    session_options.AddConfigEntry("session.use_deterministic_compute", "1");
+
+    session = Ort::Session(env, cur_path.c_str(), session_options);
+
+    Ort::AllocatorWithDefaultOptions allocator;
+
+    input_number = session.GetInputCount();
+    output_number = session.GetOutputCount();
+
+    input_names.resize(input_number);
+    output_names.resize(output_number);
+
+    input_names_char.resize(input_names.size());
+    output_names_char.resize(output_names.size());
+
+    for (size_t i = 0; i < input_number; i++) {
+        Ort::AllocatedStringPtr input_name = session.GetInputNameAllocated(i, allocator);
+        input_names[i] = input_name.get();
     }
-    return euler;
+    for (size_t i = 0; i < output_number; i++) {
+        Ort::AllocatedStringPtr output_name = session.GetOutputNameAllocated(i, allocator);
+        output_names[i] = output_name.get();
+    }
+
+    // Print input/output names
+    std::cout << "Input names: "; 
+    std::copy(input_names.begin(), input_names.end(), std::ostream_iterator<std::string>(std::cout, " "));
+    std::cout << std::endl;
+
+    std::cout << "Output names: ";
+    std::copy(output_names.begin(), output_names.end(), std::ostream_iterator<std::string>(std::cout, " "));
+    std::cout << std::endl;
+
+    for (size_t i = 0; i < input_names.size(); ++i) { input_names_char[i] = input_names[i].c_str();}
+    for (size_t i = 0; i < output_names.size(); ++i) { output_names_char[i] = output_names[i].c_str();}
+
+    // Initialize input tensors
+    for (size_t i = 0; i < input_number; ++i) {
+        Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        std::vector<int64_t> input_shape = tensor_info.GetShape();
+        std::vector<float> input_tensor_values(tensor_info.GetElementCount(), 0.0);
+        input_states_buffer.push_back(std::move(input_tensor_values));
+
+        input_tensors.emplace_back(Ort::Value::CreateTensor<float>(
+            memory_info,
+            input_states_buffer.back().data(),
+            input_states_buffer.back().size(),
+            input_shape.data(),
+            input_shape.size()));
+    }
+        
 }
 
 void CustomController::processNoise()
@@ -265,26 +201,8 @@ void CustomController::processNoise()
 
 void CustomController::processObservation()
 {
-    /*
-    obs 
-        1) root_h: root height (z)                  (1)     0
-        2) root_rot: root rotation                  (3)     2:8
-        3) root_vel: local linear velocity          (3)     8:11
-        4) root_ang_vel: root angular velocity      (3)     11:14
-        5) commands: x, y, yaw                      (3)     14:17
-        6) dof_pos: dof position                    (12)    17:29
-        7) dof_vel: dof velocity                    (12)    29:41
-        8) action: action                           (12)    47:59
-    */
-
     int data_idx = 0;
     
-    // 1) root_h: root height (z)                  (1)     0 
-    state_cur_(data_idx) = rd_cc_.q_virtual_(2);
-    data_idx++;
-
-
-    // 2) root_rot: root rotation                  (3)     2:8
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
     q.y() = rd_cc_.q_virtual_(4);
@@ -292,242 +210,106 @@ void CustomController::processObservation()
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
 
     euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    state_cur_(data_idx) = euler_angle_(0);
-    data_idx++;
-    state_cur_(data_idx) = euler_angle_(1);
-    data_idx++;
-    state_cur_(data_idx) = euler_angle_(2);
-    data_idx++;
+    state_cur_[data_idx++] = euler_angle_(0);
+    state_cur_[data_idx++] = euler_angle_(1);
+    state_cur_[data_idx++] = euler_angle_(2);
 
 
-    // 4) root_vel: root linear velocity           (3)     8:11
-    // 5) root_ang_vel: root angular velocity      (3)     11:14    
-    for (int i=0; i<6; i++)
+    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    for (int i=0; i<3; i++)
     {
-        state_cur_(data_idx) = rd_cc_.q_dot_virtual_(i);
-        data_idx++;
+        state_cur_[data_idx++] = local_lin_vel_(i);
     }
-    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
-    //     disc_data_idx++;
-    // }
+    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    for (int i=0; i<3; i++)
+    {
+        state_cur_[data_idx++] = local_ang_vel_(i);
+    }
 
 
-    // 6) commands: x, y, yaw                      (3)     14:17
-    // double desired_x = 0.3;
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 2.0e6, 0.0, desired_x, 0.0, 0.0);
-    // state_cur_(data_idx) = desired_vel_x;
-    state_cur_(data_idx) = target_vel_x_;
-    data_idx++;
-    state_cur_(data_idx) = 0.0;
-    data_idx++;
-    // state_cur_(data_idx) = 0.0;
-    state_cur_(data_idx) = target_vel_yaw_;
-    data_idx++;
-
-
-    // 7) dof_pos: dof position                    (12)    17:29
     for (int i = 0; i < num_actuator_action; i++)
     {
-        state_cur_(data_idx) = q_noise_(i);
-        data_idx++;
+        state_cur_[data_idx++] = q_noise_(i);
     }
 
-
-    // 8) dof_vel: dof velocity                    (12)    29:41
     for (int i = 0; i < num_actuator_action; i++)
     {
         if (is_on_robot_)
         {
-            state_cur_(data_idx) = q_vel_noise_(i);
+            state_cur_[data_idx++] = q_vel_noise_(i);
         }
         else
         {
-            state_cur_(data_idx) = q_vel_noise_(i); //rd_cc_.q_dot_virtual_(i+6); //q_vel_noise_(i);
+            state_cur_[data_idx++] = q_vel_noise_(i); //rd_cc_.q_dot_virtual_(i+6); //q_vel_noise_(i);
         }
-        data_idx++;
     }
 
-
-    // 10) action: action                           (12)    47:59
     for (int i = 0; i <num_actuator_action; i++) 
     {
-        state_cur_(data_idx) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
-        data_idx++;
+        state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
     
-
-    state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
-    state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
+    // state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
+    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
+    size_t buffer_size = num_cur_state*num_state_skip*num_state_hist;
+    std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
+    std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + buffer_size - num_cur_state);
 
     // Internal State First
-    for (int i = 0; i < num_state_hist; i++)
-    {
-        state_.block(num_cur_internal_state*i, 0, num_cur_internal_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_internal_state, 1);
-    }
-    // Action History Second
-    for (int i = 0; i < num_state_hist-1; i++)
-    {
-        state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
-    }
-
-    // Normalization of State
-    state_norm_ = (state_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-    // state_norm_ = (state_ - state_mean_).array() / (state_var_.array() + 1e-05).sqrt();
-
-}
-
-void CustomController::processDiscriminator()
-{
-    /*
-    1) root_h
-    2) base euler
-    3) q pos
-    4) q vel
-    5) local key pos
-    */
-    int disc_data_idx = 0;
-
-
-    // 1) root_h
-    disc_state_cur_(disc_data_idx) = rd_cc_.q_virtual_(2);
-    disc_data_idx++;
-
-
-    // 2) base euler
-    Eigen::Quaterniond q;
-    q.x() = rd_cc_.q_virtual_(3);
-    q.y() = rd_cc_.q_virtual_(4);
-    q.z() = rd_cc_.q_virtual_(5);
-    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
-
-    Vector3d tan_vec, nor_vec;
-    quatToTanNorm(q, tan_vec, nor_vec);
-    for (int i = 0; i < 3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = tan_vec(i);
-        disc_data_idx++;
-    }
-    for (int i = 0; i < 3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = nor_vec(i);
-        disc_data_idx++;
-    }
-
-    // euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    // for (int i=0; i<3; i++)
+    // for (int i = 0; i < num_state_hist; i++)
     // {
-    //     disc_state_cur_(disc_data_idx) = euler_angle_(i);
-    //     disc_data_idx++;
+    //     state_.block(num_cur_internal_state*i, 0, num_cur_internal_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_internal_state, 1);
     // }
-
-
-    // local base vel and  local ang vel
-    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    // for (int i=0; i<3; i++)
+    // // Action History Second
+    // for (int i = 0; i < num_state_hist-1; i++)
     // {
-    //     disc_state_cur_(disc_data_idx) = local_lin_vel_(i);
-    //     disc_data_idx++;
+    //     state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
     // }
-    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     disc_state_cur_(disc_data_idx) = local_ang_vel_(i);
-    //     disc_data_idx++;
-    // }
-
-
-    // 3) q pos
-    for (int i = 0; i < 12; i++)
-    {
-        disc_state_cur_(disc_data_idx) = q_noise_(i);
-        disc_data_idx++;
-    }    
-
-
-    // 4) q vel
-    for (int i = 0; i < 12; i++)
-    {
-        disc_state_cur_(disc_data_idx) = q_vel_noise_(i);
-        disc_data_idx++;
+    for (size_t i = 0; i < num_state_hist; ++i) {
+        std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1),
+                  state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1) + num_cur_internal_state,
+                  input_states_buffer[0].begin() + num_cur_internal_state * i);
     }
 
-
-    // 5) local key pos
-    Vector3d global_lfoot_pos = rd_cc_.link_[Left_Foot].xpos;
-    Vector3d global_rfoot_pos = rd_cc_.link_[Right_Foot].xpos;
-    Vector3d local_lfoot_pos = quatRotateInverse(q, global_lfoot_pos - rd_cc_.q_virtual_.head(3));
-    Vector3d local_rfoot_pos = quatRotateInverse(q, global_rfoot_pos - rd_cc_.q_virtual_.head(3));
-    for (int i = 0; i < 3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = local_lfoot_pos(i);
-        disc_data_idx++;
-    }
-    for (int i = 0; i < 3; i++)
-    {
-        disc_state_cur_(disc_data_idx) = local_rfoot_pos(i);
-        disc_data_idx++;
+    for (size_t i = 0; i < num_state_hist - 1; ++i) {
+        std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state,
+                  state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state + num_action,
+                  input_states_buffer[0].begin() + num_state_hist * num_cur_internal_state + num_action * i);
     }
 
-
-    disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state*(num_disc_hist-1),1) = disc_state_buffer_.block(0, 0, num_disc_cur_state*(num_disc_hist-1),1); 
-    disc_state_buffer_.block(0, 0, num_disc_cur_state,1) = disc_state_cur_;
-
-    disc_state_ = (disc_state_buffer_ - disc_state_mean_).array() / (disc_state_var_.array() + 1e-05).sqrt();   
 }
 
 void CustomController::feedforwardPolicy()
 {
-    hidden_layer1_ = policy_net_w0_ * state_norm_ + policy_net_b0_;
-    for (int i = 0; i < num_hidden1; i++) 
-    {
-        if (hidden_layer1_(i) < 0)
-            hidden_layer1_(i) = 0.0;
+    // print input_states_buffer
+    for (size_t i = 0; i < input_states_buffer.size(); i++) {
+        std::cout << "Input States Buffer: ";
+        for (size_t j = 0; j < input_states_buffer[i].size(); j++) {
+            std::cout << input_states_buffer[i][j] << ", ";
+        } 
+        std::cout << std::endl;
+    }    
+    output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names_char.data(), input_tensors.data(), input_number, output_names_char.data(), output_number);
+
+    // Get the output tensors data
+    for (size_t i = 0; i < output_tensors.size(); i++) {
+        if (!output_tensors[i].IsTensor()) {
+            std::cerr << "Output " << i << " is not a valid tensor." << std::endl;
+            continue;
+        }
     }
 
-    hidden_layer2_ = policy_net_w2_ * hidden_layer1_ + policy_net_b2_;
-    for (int i = 0; i < num_hidden2; i++) 
-    {
-        if (hidden_layer2_(i) < 0)
-            hidden_layer2_(i) = 0.0;
+    // output tensor to rl_action_
+    for (size_t i = 0; i < num_action; i++) {
+        rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
-
-    rl_action_ = action_net_w_ * hidden_layer2_ + action_net_b_;
-
-    value_hidden_layer1_ = value_net_w0_ * state_norm_ + value_net_b0_;
-    for (int i = 0; i < num_hidden1; i++) 
+    printf("Action: ");
+    for (int i = 0; i < num_action; i++)
     {
-        if (value_hidden_layer1_(i) < 0)
-            value_hidden_layer1_(i) = 0.0;
+        printf("%f ", rl_action_(i));
     }
+    value_ = output_tensors[2].GetTensorMutableData<float>()[0];
 
-    value_hidden_layer2_ = value_net_w2_ * value_hidden_layer1_ + value_net_b2_;
-    for (int i = 0; i < num_hidden2; i++) 
-    {
-        if (value_hidden_layer2_(i) < 0)
-            value_hidden_layer2_(i) = 0.0;
-    }
-
-    value_ = (value_net_w_ * value_hidden_layer2_ + value_net_b_)(0) * value_var_.array().sqrt()(0) + value_mean_(0);
-
-    // // Discriminator
-    // disc_hidden_layer1_ = disc_net_w0_ * disc_state_ + disc_net_b0_;
-    // for (int i = 0; i < num_disc_hidden1; i++) 
-    // {
-    //     if (disc_hidden_layer1_(i) < 0)
-    //         disc_hidden_layer1_(i) = 0.0;
-    // }
-
-    // disc_hidden_layer2_ = disc_net_w2_ * disc_hidden_layer1_ + disc_net_b2_;
-    // for (int i = 0; i < num_disc_hidden2; i++) 
-    // {
-    //     if (disc_hidden_layer2_(i) < 0)
-    //         disc_hidden_layer2_(i) = 0.0;
-    // }
-
-    // disc_value_ = (disc_net_w_ * disc_hidden_layer2_ + disc_net_b_);
 }
 
 void CustomController::computeSlow()
@@ -552,14 +334,13 @@ void CustomController::computeSlow()
 
             processNoise();
             processObservation();
-            // processDiscriminator();
             feedforwardPolicy();
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
-                // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = (state_cur_ - state_mean_).array() / state_var_.cwiseSqrt().array();
-                state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
+                // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
+                // std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state * i);
+                std::fill(state_buffer_.begin() + num_cur_state * i, state_buffer_.begin() + num_cur_state * (i + 1), 0.0);
             }
-            // disc_state_buffer_.block(num_disc_cur_state, 0, num_disc_cur_state*(num_disc_hist-1),1)= disc_state_buffer_.block(0, 0, num_disc_cur_state*(num_disc_hist-1),1);
         }
 
         processNoise();
@@ -568,12 +349,9 @@ void CustomController::computeSlow()
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
         {
             processObservation();
-            // processDiscriminator();
             feedforwardPolicy();
             
-            // action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*1/250.0, 0.0, 1/250.0);
-
-            if (value_ < 100.0)
+            if (value_ < -10.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -584,23 +362,6 @@ void CustomController::computeSlow()
                     std::cout << "Stop by Value Function" << std::endl;
                 }
             }
-            // soft max disc_value
-            // double sum = exp(disc_value_(1)) + exp(disc_value_(2)) + exp(disc_value_(3));
-            // Vector3d disc_value_softmax;
-            // disc_value_softmax << exp(disc_value_(1))/sum, exp(disc_value_(2))/sum, exp(disc_value_(3))/sum;
-            // cout << "Disc Value: " << disc_value_(0) << " " << disc_value_softmax.transpose() << endl;
-            // if (disc_value_(0) < -1.2)
-            // {
-            //     cout << "Disc: " << disc_value_(0) << endl;
-            //     if (stop_by_value_thres_ == false)
-            //     {
-            //         stop_by_value_thres_ = true;
-            //         stop_start_time_ = rd_cc_.control_time_us_;
-            //         q_stop_ = q_noise_;
-            //         std::cout << "Stop by Disc Function" << std::endl;
-            //     }
-            // }
-
             if (is_write_file_)
             {
                 writeFile << rd_cc_.q_virtual_(2) << "\t";
@@ -619,15 +380,6 @@ void CustomController::computeSlow()
                 // Eigen::Vector3d local_lin_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
                 // writeFile << rd_cc_.q_dot_virtual_(0) << "\t";
 
-                writeFile << target_vel_x_ << "\t";
-                writeFile << desired_vel_x << "\t";       
-                writeFile << local_lin_vel_(0) << "\t";
-                writeFile << disc_value_(0) << "\t";
-
-                writeFile << target_vel_yaw_ << "\t";
-                writeFile << desired_vel_yaw << "\t";
-                writeFile << rd_cc_.q_dot_virtual_(5) << "\t";
-
                 // for (int i = 0; i < 12; i++) {
                 //     writeFile << q_noise_(i) << "\t";
                 // }
@@ -637,9 +389,9 @@ void CustomController::computeSlow()
                 // print contact force
                 // writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
                 writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
-                for (int i = 0; i < num_actuator_action; i++) {
-                    writeFile << "\t" << torque_rl_(i);
-                }                
+                // for (int i = 0; i < num_actuator_action; i++) {
+                //     writeFile << "\t" << torque_rl_(i);
+                // }                
                 writeFile << std::endl;
             }
             
@@ -725,16 +477,6 @@ void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen
     normal.normalize();
 }
 
-void CustomController::checkTouchDown() {
-    // Check if the foot is in contact with the ground
-    if (LF_CF_FT_pre(2) < 10.0 && rd_cc_.LF_CF_FT(2) > 10.0) {
-        std::cout << "Left Foot Touch Down" << std::endl;
-    }
-    if (RF_CF_FT_pre(2) < 10.0 && rd_cc_.RF_CF_FT(2) > 10.0) {
-        std::cout << "Right Foot Touch Down" << std::endl;
-    }
-}
-
 Eigen::Vector3d CustomController::quatRotateInverse(const Eigen::Quaterniond& q, const Eigen::Vector3d& v) {
 
     Eigen::Vector3d q_vec = q.vec();
@@ -745,4 +487,29 @@ Eigen::Vector3d CustomController::quatRotateInverse(const Eigen::Quaterniond& q,
     Eigen::Vector3d c = 2.0 * q_vec * q_vec.dot(v);
 
     return a - b + c;
+}
+
+Eigen::Vector3d CustomController::mat2euler(Eigen::Matrix3d mat)
+{
+    Eigen::Vector3d euler;
+
+    double cy = std::sqrt(mat(2, 2) * mat(2, 2) + mat(1, 2) * mat(1, 2));
+    if (cy > std::numeric_limits<double>::epsilon())
+    {
+        euler(2) = -atan2(mat(0, 1), mat(0, 0));
+        euler(1) =  -atan2(-mat(0, 2), cy);
+        euler(0) = -atan2(mat(1, 2), mat(2, 2));
+    }
+    else
+    {
+        euler(2) = -atan2(-mat(1, 0), mat(1, 1));
+        euler(1) =  -atan2(-mat(0, 2), cy);
+        euler(0) = 0.0;
+    }
+    return euler;
+}
+
+Eigen::VectorQd CustomController::getControl()
+{
+    return ControlVal_;
 }
