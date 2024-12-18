@@ -4,7 +4,7 @@ using namespace TOCABI;
 
 CustomController::CustomController(RobotData &rd) 
     :   rd_(rd), //, wbc_(dc.wbc_)
-        env(ORT_LOGGING_LEVEL_VERBOSE, "tocabi"),
+        env(ORT_LOGGING_LEVEL_WARNING, "tocabi"),
         memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
         session(nullptr)
 {    
@@ -33,34 +33,10 @@ CustomController::CustomController(RobotData &rd)
 
 void CustomController::initVariable()
 {    
-    // policy_net_w0_.resize(num_hidden1, num_state);
-    // policy_net_b0_.resize(num_hidden1, 1);
-    // policy_net_w2_.resize(num_hidden2, num_hidden1);
-    // policy_net_b2_.resize(num_hidden2, 1);
-    // action_net_w_.resize(num_action, num_hidden2);
-    // action_net_b_.resize(num_action, 1);
-
-    // hidden_layer1_.resize(num_hidden1, 1);
-    // hidden_layer2_.resize(num_hidden2, 1);
     rl_action_.resize(num_action, 1);
 
-    // value_net_w0_.resize(num_hidden1, num_state);
-    // value_net_b0_.resize(num_hidden1, 1);
-    // value_net_w2_.resize(num_hidden2, num_hidden1);
-    // value_net_b2_.resize(num_hidden2, 1);
-    // value_net_w_.resize(1, num_hidden2);
-    // value_net_b_.resize(1, 1);
-
-    // value_hidden_layer1_.resize(num_hidden1, 1);
-    // value_hidden_layer2_.resize(num_hidden2, 1);
-    
     state_cur_.resize(num_cur_state, 1);
-    // state_.resize(num_state, 1);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
-    // state_mean_.resize(num_state, 1);
-    // state_var_.resize(num_state, 1);
-    // value_mean_.resize(1, 1);
-    // value_var_.resize(1, 1);
 
     q_dot_lpf_.setZero();
 
@@ -203,6 +179,8 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
     
+    state_cur_[data_idx++] = rd_cc_.q_virtual_(2);
+
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
     q.y() = rd_cc_.q_virtual_(4);
@@ -214,18 +192,24 @@ void CustomController::processObservation()
     state_cur_[data_idx++] = euler_angle_(1);
     state_cur_[data_idx++] = euler_angle_(2);
 
-
-    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    for (int i=0; i<3; i++)
+    for(int i = 0; i < 6; i++)
     {
-        state_cur_[data_idx++] = local_lin_vel_(i);
+        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
     }
-    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    for (int i=0; i<3; i++)
-    {
-        state_cur_[data_idx++] = local_ang_vel_(i);
-    }
+    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     state_cur_[data_idx++] = local_lin_vel_(i);
+    // }
+    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     state_cur_[data_idx++] = local_ang_vel_(i);
+    // }
 
+    state_cur_[data_idx++] = target_vel_x_;
+    state_cur_[data_idx++] = target_vel_y_;
+    state_cur_[data_idx++] = target_vel_yaw_;
 
     for (int i = 0; i < num_actuator_action; i++)
     {
@@ -249,28 +233,18 @@ void CustomController::processObservation()
         state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
     
-    // state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
-    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
     size_t buffer_size = num_cur_state*num_state_skip*num_state_hist;
     std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
     std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + buffer_size - num_cur_state);
 
     // Internal State First
-    // for (int i = 0; i < num_state_hist; i++)
-    // {
-    //     state_.block(num_cur_internal_state*i, 0, num_cur_internal_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_internal_state, 1);
-    // }
-    // // Action History Second
-    // for (int i = 0; i < num_state_hist-1; i++)
-    // {
-    //     state_.block(num_state_hist*num_cur_internal_state + num_action*i, 0, num_action, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)) + num_cur_internal_state, 0, num_action, 1);
-    // }
     for (size_t i = 0; i < num_state_hist; ++i) {
         std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1),
                   state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1) + num_cur_internal_state,
                   input_states_buffer[0].begin() + num_cur_internal_state * i);
     }
 
+    // Action History Second
     for (size_t i = 0; i < num_state_hist - 1; ++i) {
         std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state,
                   state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state + num_action,
@@ -281,17 +255,8 @@ void CustomController::processObservation()
 
 void CustomController::feedforwardPolicy()
 {
-    // print input_states_buffer
-    for (size_t i = 0; i < input_states_buffer.size(); i++) {
-        std::cout << "Input States Buffer: ";
-        for (size_t j = 0; j < input_states_buffer[i].size(); j++) {
-            std::cout << input_states_buffer[i][j] << ", ";
-        } 
-        std::cout << std::endl;
-    }    
     output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names_char.data(), input_tensors.data(), input_number, output_names_char.data(), output_number);
 
-    // Get the output tensors data
     for (size_t i = 0; i < output_tensors.size(); i++) {
         if (!output_tensors[i].IsTensor()) {
             std::cerr << "Output " << i << " is not a valid tensor." << std::endl;
@@ -303,11 +268,8 @@ void CustomController::feedforwardPolicy()
     for (size_t i = 0; i < num_action; i++) {
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
-    printf("Action: ");
-    for (int i = 0; i < num_action; i++)
-    {
-        printf("%f ", rl_action_(i));
-    }
+
+    // output tensor to value_
     value_ = output_tensors[2].GetTensorMutableData<float>()[0];
 
 }
@@ -337,8 +299,6 @@ void CustomController::computeSlow()
             feedforwardPolicy();
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
-                // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
-                // std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state * i);
                 std::fill(state_buffer_.begin() + num_cur_state * i, state_buffer_.begin() + num_cur_state * (i + 1), 0.0);
             }
         }
@@ -365,29 +325,6 @@ void CustomController::computeSlow()
             if (is_write_file_)
             {
                 writeFile << rd_cc_.q_virtual_(2) << "\t";
-                // for (int i = 0; i < 3; i++) {
-                    // writeFile << rd_cc_.q_virtual_(i) << "\t";
-                // }
-                // for (int i = 0; i < 6; i++) {
-                    // writeFile << rd_cc_.q_dot_virtual_(i) << "\t";
-                // }
-
-                // Eigen::Quaterniond q;
-                // q.x() = rd_cc_.q_virtual_(3);
-                // q.y() = rd_cc_.q_virtual_(4);
-                // q.z() = rd_cc_.q_virtual_(5);
-                // q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);
-                // Eigen::Vector3d local_lin_vel = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-                // writeFile << rd_cc_.q_dot_virtual_(0) << "\t";
-
-                // for (int i = 0; i < 12; i++) {
-                //     writeFile << q_noise_(i) << "\t";
-                // }
-                // for (int i = 0; i < 12; i++) {
-                //     writeFile << q_vel_noise_(i) << "\t";
-                // }
-                // print contact force
-                // writeFile << -rd_cc_.LF_FT(2) << "\t" << -rd_cc_.RF_FT(2) << "\t";
                 writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
                 // for (int i = 0; i < num_actuator_action; i++) {
                 //     writeFile << "\t" << torque_rl_(i);

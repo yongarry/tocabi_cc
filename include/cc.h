@@ -37,13 +37,6 @@ public:
 
 
     /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
-    // Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
-    // Ort::SessionOptions session_options;
-    // Ort::Session session(env, weight_dir_ + "policy.onnx", session_options);
-
-    // Ort::AllocatorWithDefaultOptions allocator;
-    // Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
     size_t input_number, output_number;
     std::vector<std::string> input_names, output_names;
     std::vector<const char *> input_names_char, output_names_char;
@@ -65,14 +58,12 @@ public:
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
 
     Eigen::MatrixXd rl_action_;
-
     double value_;
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     bool stop_by_value_thres_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_stop_;
     float stop_start_time_;
-    
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     std::ofstream writeFile;
 
@@ -133,7 +124,7 @@ public:
 private:
     Eigen::VectorQd ControlVal_;
 
-    Ort::Env env; // Add the Ort::Env as a member if needed
-    Ort::Session session; // Add Ort::Session as a member
-    Ort::MemoryInfo memory_info; // Add memory info as a member
+    Ort::Env env;
+    Ort::Session session;
+    Ort::MemoryInfo memory_info;
 };

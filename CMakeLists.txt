@@ -11,9 +11,7 @@ eigen_conversions
 )
 
 # Set the path to ONNX Runtime
-set(ONNXRUNTIME_DIR "/home/yong20/Downloads/onnxruntime-linux") # Replace with the actual path to your onnxruntime installation
-include_directories(${ONNXRUNTIME_DIR}/include)
-link_directories(${ONNXRUNTIME_DIR}/lib) # Adjust to match the library directory
+include_directories(/usr/local/include/onnxruntime)
 
 catkin_package(
   INCLUDE_DIRS include
@@ -37,11 +35,13 @@ add_library(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 # Link with catkin and ONNX Runtime libraries
-target_include_directories(${PROJECT_NAME} PUBLIC ${ONNXRUNTIME_DIR}/include)
+target_include_directories(${PROJECT_NAME} PUBLIC 
+  /usr/local/include/onnxruntime
+)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
   ${catkin_LIBRARIES}
-  ${ONNXRUNTIME_DIR}/lib/libonnxruntime.so
+  onnxruntime
 )
 
 install(TARGETS ${PROJECT_NAME}
