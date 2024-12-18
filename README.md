@@ -7,7 +7,6 @@ This document provides instructions on how to use the ONNX runtime controller in
 ### Launch install_onnx.sh
 Installing prebuilt package(CPU) on ```/usr/local/lib``` and ```/usr/local/include```
 ```sh
-sudo chmod +x ./install_onnx.sh
 sudo ./install_onnx.sh
 ```        
 ### Helpful Documents
