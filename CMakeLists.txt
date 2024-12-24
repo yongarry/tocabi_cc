@@ -10,12 +10,9 @@ tocabi_msgs
 eigen_conversions
 )
 
-# Set the path to ONNX Runtime
-include_directories(/usr/local/include/onnxruntime)
-
 catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES ${PROJECT_NAME}
+  INCLUDE_DIRS include /usr/local/include/onnxruntime
+  LIBRARIES ${PROJECT_NAME} onnxruntime
   CATKIN_DEPENDS tocabi_lib tocabi_msgs
 # DEPENDS system_lib
 )
