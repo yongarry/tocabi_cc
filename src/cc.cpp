@@ -192,20 +192,20 @@ void CustomController::processObservation()
     state_cur_[data_idx++] = euler_angle_(1);
     state_cur_[data_idx++] = euler_angle_(2);
 
-    for(int i = 0; i < 6; i++)
+    // for(int i = 0; i < 6; i++)
+    // {
+    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
+    // }
+    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    for (int i=0; i<3; i++)
     {
-        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
+        state_cur_[data_idx++] = local_lin_vel_(i);
     }
-    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     state_cur_[data_idx++] = local_lin_vel_(i);
-    // }
-    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     state_cur_[data_idx++] = local_ang_vel_(i);
-    // }
+    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    for (int i=0; i<3; i++)
+    {
+        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i+3);
+    }
 
     state_cur_[data_idx++] = target_vel_x_;
     state_cur_[data_idx++] = target_vel_y_;
@@ -311,7 +311,7 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            if (value_ < -10.0)
+            if (value_ < 100.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -388,9 +388,9 @@ void CustomController::copyRobotData(RobotData &rd_l)
 
 void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0], -0.5, 0.5);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0]*0.5, -0.5, 0.5);
     target_vel_y_ = 0.0; // DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
-    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->axes[2], -0.5, 0.5);
+    target_vel_yaw_ = -DyrosMath::minmax_cut(joy->axes[2]*0.3, -0.3, 0.3);
 }
 
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
