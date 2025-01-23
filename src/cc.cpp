@@ -38,6 +38,11 @@ void CustomController::initVariable()
     state_cur_.resize(num_cur_state, 1);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
 
+    if (is_hist_encoder_) { 
+        state_long_hist_.resize(num_hist_state * num_cur_state, 1); 
+        state_long_hist_buffer_.resize(num_long_hist_len * num_cur_state, 1);
+    }
+
     q_dot_lpf_.setZero();
 
     torque_bound_ << 333, 232, 263, 289, 222, 166,
@@ -115,7 +120,10 @@ void CustomController::loadOnnX()
     std::copy(output_names.begin(), output_names.end(), std::ostream_iterator<std::string>(std::cout, " "));
     std::cout << std::endl;
 
-    for (size_t i = 0; i < input_names.size(); ++i) { input_names_char[i] = input_names[i].c_str();}
+    for (size_t i = 0; i < input_names.size(); ++i) { 
+        input_names_char[i] = input_names[i].c_str();
+        if (input_names_char[i] == "obs") {input_obs_idx_ = i;}
+    }
     for (size_t i = 0; i < output_names.size(); ++i) { output_names_char[i] = output_names[i].c_str();}
 
     // Initialize input tensors
@@ -123,6 +131,7 @@ void CustomController::loadOnnX()
         Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
         auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
         std::vector<int64_t> input_shape = tensor_info.GetShape();
+        cout << "Input " << i << " shape: " << input_shape.size() << endl;
         std::vector<float> input_tensor_values(tensor_info.GetElementCount(), 0.0);
         input_states_buffer.push_back(std::move(input_tensor_values));
 
@@ -201,10 +210,14 @@ void CustomController::processObservation()
     {
         state_cur_[data_idx++] = local_lin_vel_(i);
     }
-    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    for (int i=0; i<3; i++)
+    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i+3);
+    // }
+    for (int i = 3; i < 6; i++)
     {
-        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i+3);
+        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
     }
 
     state_cur_[data_idx++] = target_vel_x_;
@@ -241,20 +254,40 @@ void CustomController::processObservation()
     for (size_t i = 0; i < num_state_hist; ++i) {
         std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1),
                   state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1) + num_cur_internal_state,
-                  input_states_buffer[0].begin() + num_cur_internal_state * i);
+                  input_states_buffer[input_obs_idx_].begin() + num_cur_internal_state * i);
     }
 
     // Action History Second
     for (size_t i = 0; i < num_state_hist - 1; ++i) {
         std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state,
                   state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state + num_action,
-                  input_states_buffer[0].begin() + num_state_hist * num_cur_internal_state + num_action * i);
+                  input_states_buffer[input_obs_idx_].begin() + num_state_hist * num_cur_internal_state + num_action * i);
+    }
+
+    if (is_hist_encoder_){
+        std::copy(state_long_hist_.begin() + num_cur_state, state_long_hist_.end(), state_long_hist_.begin());
+        std::copy(state_cur_.begin(), state_cur_.end(), state_long_hist_.begin() + num_hist_state * num_cur_state - num_cur_state);
+
+        for (size_t i = 0; i < num_long_hist_len; ++i) {
+            std::copy(state_long_hist_.begin() + num_cur_state * (num_long_hist_skip * (i + 1) - 1),
+                      state_long_hist_.begin() + num_cur_state * (num_long_hist_skip * (i + 1)),
+                      state_long_hist_buffer_.begin() + num_cur_state * i);
+        }
+        // transpose state_long_hist_buffer_(50,49) to input_states_buffer_(49,50)
+        for (size_t i = 0; i < num_long_hist_len; ++i) {
+            for (size_t j = 0; j < num_cur_state; ++j) {
+                input_states_buffer[0][j * num_long_hist_len + i] = state_long_hist_buffer_[i * num_cur_state + j];
+            }
+        }
+
     }
 
 }
 
 void CustomController::feedforwardPolicy()
 {
+    // std::fill(input_states_buffer[0].begin(), input_states_buffer[0].end(), 0.0);
+    // std::fill(input_states_buffer[1].begin(), input_states_buffer[1].end(), 0.0);
     output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names_char.data(), input_tensors.data(), input_number, output_names_char.data(), output_number);
 
     for (size_t i = 0; i < output_tensors.size(); i++) {
@@ -268,7 +301,7 @@ void CustomController::feedforwardPolicy()
     for (size_t i = 0; i < num_action; i++) {
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
-
+    // cout << "RL Action: " << rl_action_.transpose() << endl;
     // output tensor to value_
     value_ = output_tensors[2].GetTensorMutableData<float>()[0];
 
@@ -300,7 +333,15 @@ void CustomController::computeSlow()
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
             {
                 std::fill(state_buffer_.begin() + num_cur_state * i, state_buffer_.begin() + num_cur_state * (i + 1), 0.0);
+                // std::copy(state_cur_.begin(), state_cur_.begin(), state_buffer_.begin() + num_cur_state * i);
             }
+            if (is_hist_encoder_)
+            {
+                for (size_t i = 0; i < num_hist_state; ++i) {
+                    std::fill(state_long_hist_.begin() + num_cur_state * i, state_long_hist_.begin() + num_cur_state * (i + 1), 0.0);
+                    // std::copy(state_cur_.begin(), state_cur_.end(), state_long_hist_.begin() + i * num_cur_state);
+                }
+            }   
         }
 
         processNoise();

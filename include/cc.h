@@ -45,6 +45,10 @@ public:
     std::vector<std::vector<float>> input_states_buffer;
     std::vector<float> state_cur_, state_buffer_;
 
+    // for long history observation
+    std::vector<float> state_long_hist_, state_long_hist_buffer_;
+
+    int input_obs_idx_ = 0;
 
     ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
@@ -56,6 +60,12 @@ public:
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
+
+    // for long history observation
+    static const int num_long_hist_skip = 10;
+    static const int num_long_hist_len = 50;
+    static const int num_hist_state = num_long_hist_len * num_long_hist_skip;
+
 
     Eigen::MatrixXd rl_action_;
     double value_;
@@ -69,6 +79,7 @@ public:
 
     bool is_on_robot_ = false;
     bool is_write_file_ = true;
+    bool is_hist_encoder_ = true;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
@@ -127,4 +138,10 @@ private:
     Ort::Env env;
     Ort::Session session;
     Ort::MemoryInfo memory_info;
+
+    const std::string reset = "\033[0m";     // Reset color
+    const std::string red = "\033[31m";     // Red
+    const std::string green = "\033[32m";   // Green
+    const std::string yellow = "\033[33m";  // Yellow
+    const std::string blue = "\033[34m"; 
 };
