@@ -79,7 +79,7 @@ public:
 
     bool is_on_robot_ = false;
     bool is_write_file_ = true;
-    bool is_hist_encoder_ = true;
+    bool is_hist_encoder_ = false;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 

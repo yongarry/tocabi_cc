@@ -78,7 +78,7 @@ void CustomController::initVariable()
 
 void CustomController::loadOnnX()
 {
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
+    string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
 
     if (is_on_robot_)
     {
@@ -220,9 +220,30 @@ void CustomController::processObservation()
         state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
     }
 
-    state_cur_[data_idx++] = target_vel_x_;
-    state_cur_[data_idx++] = target_vel_y_;
-    state_cur_[data_idx++] = target_vel_yaw_;
+    // state_cur_[data_idx++] = target_vel_x_;
+    // state_cur_[data_idx++] = target_vel_y_;
+    // state_cur_[data_idx++] = target_vel_yaw_;
+
+    if (rd_cc_.control_time_us_ < start_time_ + 5.0e6)
+    {
+        desired_vel_x = 0.4;
+    }
+    else if (rd_cc_.control_time_us_ < start_time_ + 10.0e6)
+    {
+        desired_vel_x = -0.3;
+    }
+    else if (rd_cc_.control_time_us_ < start_time_ + 15.0e6)
+    {
+        desired_vel_x = 0.4;
+    }
+    else
+    {
+        desired_vel_x = 0.0;
+    }
+
+    state_cur_[data_idx++] = desired_vel_x;
+    state_cur_[data_idx++] = 0.0;
+    state_cur_[data_idx++] = 0.0;
 
     for (int i = 0; i < num_actuator_action; i++)
     {
@@ -352,7 +373,7 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            if (value_ < 100.0)
+            if (value_ < -100.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
