@@ -78,11 +78,11 @@ void CustomController::initVariable()
 
 void CustomController::loadOnnX()
 {
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/SNpolicy/" + weight_dir_;
 
     if (is_on_robot_)
     {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/policy/TocabiAMPLower.onnx";
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/SNpolicy/" + weight_dir_;
     }
 
     Ort::SessionOptions session_options;
@@ -220,9 +220,13 @@ void CustomController::processObservation()
         state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
     }
 
-    state_cur_[data_idx++] = target_vel_x_;
-    state_cur_[data_idx++] = target_vel_y_;
-    state_cur_[data_idx++] = target_vel_yaw_;
+    state_cur_[data_idx++] = 0.3;
+    state_cur_[data_idx++] = 0.0;
+    state_cur_[data_idx++] = 0.0;
+
+    // state_cur_[data_idx++] = target_vel_x_;
+    // state_cur_[data_idx++] = target_vel_y_;
+    // state_cur_[data_idx++] = target_vel_yaw_;
 
     for (int i = 0; i < num_actuator_action; i++)
     {
