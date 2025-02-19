@@ -235,11 +235,14 @@ void CustomController::processObservation()
     // else
     // {
     //     desired_vel_x = 0.0;
-    // }
-
+    // // }
+    // desired_vel_x = target_vel_x_;
     // state_cur_[data_idx++] = desired_vel_x;
     // state_cur_[data_idx++] = 0.0;
     // state_cur_[data_idx++] = 0.0;
+
+    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5.0e6, 0.0, 0.3, 0.0, 0.0);
+    // state_cur_[data_idx++] = desired_vel_x;
 
     state_cur_[data_idx++] = 0.3;
     state_cur_[data_idx++] = 0.0;
@@ -377,7 +380,7 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            if (value_ < -100.0)
+            if (value_ < 100.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -391,6 +394,8 @@ void CustomController::computeSlow()
             if (is_write_file_)
             {
                 writeFile << rd_cc_.q_virtual_(2) << "\t";
+                writeFile << rd_cc_.q_dot_virtual_(2) << "\t";
+                writeFile << desired_vel_x << "\t";
                 writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
                 // for (int i = 0; i < num_actuator_action; i++) {
                 //     writeFile << "\t" << torque_rl_(i);
