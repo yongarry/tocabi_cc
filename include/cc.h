@@ -67,7 +67,7 @@ public:
     static const int num_hist_state = num_long_hist_len * num_long_hist_skip;
 
 
-    Eigen::MatrixXd rl_action_;
+    Eigen::MatrixXd rl_action_, rl_action_pre_, torq_diff_, energy;
     double value_;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -86,7 +86,7 @@ public:
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_pre_;
-    Eigen::Matrix<double, MODEL_DOF, 1> q_vel_noise_;
+    Eigen::Matrix<double, MODEL_DOF, 1> q_vel_noise_, q_vel_noise_pre_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> torque_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;

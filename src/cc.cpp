@@ -16,11 +16,11 @@ CustomController::CustomController(RobotData &rd)
     {
         if (is_on_robot_)
         {
-            writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/robot_data.txt", std::ofstream::out | std::ofstream::app);
+            writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/"+weight_dir_+".csv", std::ofstream::out | std::ofstream::app);
         }
         else
         {
-            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/data.txt", std::ofstream::out | std::ofstream::trunc);
+            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/"+weight_dir_+"data.csv", std::ofstream::out | std::ofstream::trunc);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -34,6 +34,9 @@ CustomController::CustomController(RobotData &rd)
 void CustomController::initVariable()
 {    
     rl_action_.resize(num_action, 1);
+    rl_action_pre_.resize(num_action, 1);
+    torq_diff_.resize(num_action, 1);
+    energy.resize(num_action, 1);
 
     state_cur_.resize(num_cur_state, 1);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
@@ -78,11 +81,11 @@ void CustomController::initVariable()
 
 void CustomController::loadOnnX()
 {
-    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/SNpolicy/" + weight_dir_;
+    string cur_path = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/" + weight_dir_;
     // string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
     if (is_on_robot_)
     {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/SNpolicy/" + weight_dir_;
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/" + weight_dir_;
     }
 
     Ort::SessionOptions session_options;
@@ -148,6 +151,8 @@ void CustomController::loadOnnX()
 void CustomController::processNoise()
 {
     time_cur_ = rd_cc_.control_time_us_ / 1e6;
+    q_vel_noise_pre_ = q_vel_noise_;
+    rl_action_pre_ = rl_action_;
     if (is_on_robot_)
     {
         q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
@@ -244,9 +249,12 @@ void CustomController::processObservation()
     // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5.0e6, 0.0, 0.3, 0.0, 0.0);
     // state_cur_[data_idx++] = desired_vel_x;
 
-    state_cur_[data_idx++] = 0.3;
+    desired_vel_x = 0.3;
+    desired_vel_yaw = 0.0;
+
+    state_cur_[data_idx++] = desired_vel_x;
     state_cur_[data_idx++] = 0.0;
-    state_cur_[data_idx++] = 0.0;
+    state_cur_[data_idx++] = desired_vel_yaw;
 
     // state_cur_[data_idx++] = target_vel_x_;
     // state_cur_[data_idx++] = target_vel_y_;
@@ -393,15 +401,26 @@ void CustomController::computeSlow()
             }
             if (is_write_file_)
             {
-                writeFile << rd_cc_.q_virtual_(2) << "\t";
-                writeFile << rd_cc_.q_dot_virtual_(2) << "\t";
-                writeFile << desired_vel_x << "\t";
-                writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
-                // for (int i = 0; i < num_actuator_action; i++) {
-                //     writeFile << "\t" << torque_rl_(i);
-                // }                
+                // writeFile << rd_cc_.q_virtual_(2) << "\t";
+                // writeFile << rd_cc_.q_dot_virtual_(2) << "\t";
+                // writeFile << desired_vel_x << "\t";
+                // writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
+                
+                for (int i = 0; i < num_actuator_action; i++) {
+                    torq_diff_(i) = (rl_action_(i) - rl_action_pre_(i))*torque_bound_(i);
+                    energy(i) = rl_action_(i) * torque_bound_(i) * q_vel_noise_(i);
+                }                
+                writeFile << rd_cc_.control_time_ << "\t";
+                writeFile << torq_diff_.norm() << "\t";
+                writeFile << (q_vel_noise_ - q_vel_noise_pre_).norm() << "\t";
+                writeFile << q_vel_noise_.norm() << "\t";
+                writeFile << energy.sum() << "\t";
+                writeFile << std::pow((desired_vel_x - rd_cc_.q_dot_virtual_(0)),2) + std::pow((desired_vel_yaw - rd_cc_.q_dot_virtual_(5)),2);
+                
                 writeFile << std::endl;
             }
+
+
             
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
