@@ -53,13 +53,16 @@ public:
     ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    static const int num_cur_state = 49; // 37 + 12
-    // static const int num_cur_state = 48; // 36 + 12
-    static const int num_cur_internal_state = 37;
-    // static const int num_cur_internal_state = 36;
+    // static const int num_cur_state = 49; // 37 + 12
+    static const int num_cur_state = 48; // 36 + 12
+    // static const int num_cur_internal_state = 37;
+    static const int num_cur_internal_state = 36;
     static const int num_state_skip = 2;
+    // static const int num_state_skip = 1;
     static const int num_state_hist = 10;
+    // static const int num_state_hist = 1;
     static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
+    // static const int num_state = num_cur_internal_state +num_action;
 
     // for long history observation
     static const int num_long_hist_skip = 10;
@@ -106,7 +109,6 @@ public:
 
     double time_cur_;
     double time_pre_;
-    double action_dt_accumulate_ = 0.0;
 
     Eigen::Vector3d euler_angle_;
     Eigen::Vector3d tan_vec, nor_vec;
@@ -125,6 +127,8 @@ public:
 
     Eigen::Vector3d local_lin_vel_;
 
+    Eigen::Matrix<double, 12, 12> action_offset_, 
+                                  action_scale_;
     double target_vel_x_ = 0.0;
     double target_vel_y_ = 0.0;
     double target_vel_yaw_ = 0.0;

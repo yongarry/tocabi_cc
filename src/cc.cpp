@@ -27,8 +27,8 @@ CustomController::CustomController(RobotData &rd)
     initVariable();
     loadOnnX();
 
-    // joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
-    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
+    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
+    // xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 void CustomController::initVariable()
@@ -76,6 +76,11 @@ void CustomController::initVariable()
                         10.0, 28.0, 10.0, 10.0, 10.0, 10.0, 3.0, 3.0,
                         2.0, 2.0,
                         10.0, 28.0, 10.0, 10.0, 10.0, 10.0, 3.0, 3.0;
+
+    action_offset_.diagonal() << 0.0,  0.0, -0.25,  0.45, -0.15,  0.0,  
+                                 0.0,  0.0, -0.25,  0.45, -0.15,  0.0;
+    action_scale_.diagonal()  << 0.42, 0.7, 1.05, 1.05, 0.91, 0.84, 
+                                 0.42, 0.7, 1.05, 1.05, 0.91, 0.84;
 }
 
 
@@ -193,7 +198,7 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
     
-    state_cur_[data_idx++] = rd_cc_.q_virtual_(2);
+    // state_cur_[data_idx++] = rd_cc_.q_virtual_(2);
 
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
@@ -206,24 +211,24 @@ void CustomController::processObservation()
     state_cur_[data_idx++] = euler_angle_(1);
     state_cur_[data_idx++] = euler_angle_(2);
 
-    // for(int i = 0; i < 6; i++)
-    // {
-    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
-    // }
-    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    for (int i=0; i<3; i++)
+    for(int i = 0; i < 6; i++)
     {
-        state_cur_[data_idx++] = local_lin_vel_(i);
+        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
     }
+    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    // for (int i=0; i<3; i++)
+    // {
+    //     state_cur_[data_idx++] = local_lin_vel_(i);
+    // }
     // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
     // for (int i=0; i<3; i++)
     // {
     //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i+3);
     // }
-    for (int i = 3; i < 6; i++)
-    {
-        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
-    }
+    // for (int i = 3; i < 6; i++)
+    // {
+    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
+    // }
 
     // if (rd_cc_.control_time_us_ < start_time_ + 5.0e6)
     // {
@@ -249,16 +254,16 @@ void CustomController::processObservation()
     // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5.0e6, 0.0, 0.3, 0.0, 0.0);
     // state_cur_[data_idx++] = desired_vel_x;
 
-    desired_vel_x = 0.3;
-    desired_vel_yaw = 0.0;
+    // desired_vel_x = 0.3;
+    // desired_vel_yaw = 0.0;
 
-    state_cur_[data_idx++] = desired_vel_x;
-    state_cur_[data_idx++] = 0.0;
-    state_cur_[data_idx++] = desired_vel_yaw;
+    // state_cur_[data_idx++] = desired_vel_x;
+    // state_cur_[data_idx++] = 0.0;
+    // state_cur_[data_idx++] = desired_vel_yaw;
 
-    // state_cur_[data_idx++] = target_vel_x_;
-    // state_cur_[data_idx++] = target_vel_y_;
-    // state_cur_[data_idx++] = target_vel_yaw_;
+    state_cur_[data_idx++] = target_vel_x_;
+    state_cur_[data_idx++] = target_vel_y_;
+    state_cur_[data_idx++] = target_vel_yaw_;
 
     for (int i = 0; i < num_actuator_action; i++)
     {
@@ -383,7 +388,8 @@ void CustomController::computeSlow()
         processNoise();
 
         // processObservation and feedforwardPolicy mean time: 15 us, max 53 us
-        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
+        // if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/250.0 - 1/10000.0)
+        if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/100.0)
         {
             processObservation();
             feedforwardPolicy();
@@ -424,9 +430,15 @@ void CustomController::computeSlow()
             
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
+        Vector12d target_pos;
         for (int i = 0; i < num_actuator_action; i++)
         {
-            torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
+            // torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
+            target_pos(i) = action_offset_(i,i) + rl_action_(i) * action_scale_(i,i);
+        }
+        for (int i = 0; i < num_actuator_action; i++)
+        {
+            torque_rl_(i) = kp_(i,i) / 9.0 * (target_pos(i) - q_noise_(i)) - kv_(i,i) / 3.0 * q_vel_noise_(i);
         }
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
         {
