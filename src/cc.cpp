@@ -27,8 +27,8 @@ CustomController::CustomController(RobotData &rd)
     initVariable();
     loadOnnX();
 
-    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
-    // xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
+    // joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy_gui", 10, &CustomController::joyCallback, this);
+    xbox_joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("/joy", 10, &CustomController::xBoxJoyCallback, this);
 }
 
 void CustomController::initVariable()
@@ -39,12 +39,7 @@ void CustomController::initVariable()
     energy.resize(num_action, 1);
 
     state_cur_.resize(num_cur_state, 1);
-    state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 1);
-
-    if (is_hist_encoder_) { 
-        state_long_hist_.resize(num_hist_state * num_cur_state, 1); 
-        state_long_hist_buffer_.resize(num_long_hist_len * num_cur_state, 1);
-    }
+    state_buffer_.resize(num_state, 1);
 
     q_dot_lpf_.setZero();
 
@@ -57,6 +52,8 @@ void CustomController::initVariable()
                     
     q_init_ << 0.0, 0.0, -0.24, 0.6, -0.36, 0.0,
                 0.0, 0.0, -0.24, 0.6, -0.36, 0.0,
+    // q_init_ <<  0.0, 0.0, -0.5, 1.0, -0.5, 0.0,
+                // 0.0, 0.0, -0.5, 1.0, -0.5, 0.0,
                 0.0, 0.0, 0.0,
                 0.3, 0.3, 1.5, -1.27, -1.0, 0.0, -1.0, 0.0,
                 0.0, 0.0,
@@ -70,17 +67,20 @@ void CustomController::initVariable()
                         400.0, 1000.0, 400.0, 400.0, 400.0, 400.0, 100.0, 100.0,
                         100.0, 100.0,
                         400.0, 1000.0, 400.0, 400.0, 400.0, 400.0, 100.0, 100.0;
-    kv_.diagonal() << 15.0, 50.0, 20.0, 25.0, 24.0, 24.0,
+    kv_.diagonal() <<   15.0, 50.0, 20.0, 25.0, 24.0, 24.0,
                         15.0, 50.0, 20.0, 25.0, 24.0, 24.0,
                         200.0, 100.0, 100.0,
                         10.0, 28.0, 10.0, 10.0, 10.0, 10.0, 3.0, 3.0,
                         2.0, 2.0,
                         10.0, 28.0, 10.0, 10.0, 10.0, 10.0, 3.0, 3.0;
 
-    action_offset_.diagonal() << 0.0,  0.0, -0.25,  0.45, -0.15,  0.0,  
-                                 0.0,  0.0, -0.25,  0.45, -0.15,  0.0;
-    action_scale_.diagonal()  << 0.42, 0.7, 1.05, 1.05, 0.91, 0.84, 
-                                 0.42, 0.7, 1.05, 1.05, 0.91, 0.84;
+    action_offset <<    0.0,  0.0, -0.25,  0.45, -0.15,  0.0,  
+                        0.0,  0.0, -0.25,  0.45, -0.15,  0.0;
+    action_scale  <<    0.3, 0.5, 0.75, 0.75, 0.65, 0.6, 
+                        0.3, 0.5, 0.75, 0.75, 0.65, 0.6;
+    // action_offset.setZero();
+    // action_scale << M_PI/2, M_PI/4, M_PI/2, M_PI/2, M_PI/4, M_PI/4,
+    //                 M_PI/2, M_PI/4, M_PI/2, M_PI/2, M_PI/4, M_PI/4;
 }
 
 
@@ -150,7 +150,75 @@ void CustomController::loadOnnX()
             input_shape.data(),
             input_shape.size()));
     }
-        
+
+    // test policy
+    state_buffer_ ={1.9608e-01, -3.2585e-02,  6.0898e-02,  1.9302e-01, -3.0542e-02,
+         4.3752e-02,  1.9118e-01, -2.8251e-02,  2.7609e-02,  1.9025e-01,
+        -2.5714e-02,  1.2715e-02,  1.8983e-01, -2.2995e-02, -1.2361e-03,
+        -1.6920e-01, -2.7193e-01,  4.9914e-01, -1.6177e-01, -2.8240e-01,
+         5.0141e-01, -1.5521e-01, -2.8582e-01,  5.0137e-01, -1.4695e-01,
+        -2.8365e-01,  4.9998e-01, -1.3631e-01, -2.7864e-01,  4.9839e-01,
+         4.7279e-02,  7.9989e-02, -9.9567e-01,  4.4886e-02,  8.1414e-02,
+        -9.9567e-01,  4.2451e-02,  8.2782e-02, -9.9566e-01,  4.0033e-02,
+         8.4087e-02, -9.9565e-01,  3.7667e-02,  8.5304e-02, -9.9564e-01,
+         8.2708e-01,  8.4433e-01,  8.6074e-01,  8.7631e-01,  8.9101e-01,
+         2.2840e-01,  0.0000e+00,  4.8161e-01,  2.2840e-01,  0.0000e+00,
+         4.7897e-01,  2.2840e-01,  0.0000e+00,  4.7633e-01,  2.2840e-01,
+         0.0000e+00,  4.7370e-01,  2.2840e-01,  0.0000e+00,  4.7107e-01,
+        -2.4610e-01,  4.5455e-03,  2.4576e-01, -1.5237e-01, -1.1984e-01,
+         8.4797e-02,  6.8922e-02,  2.3734e-02, -1.5042e-01,  1.9421e-01,
+        -1.9378e-01,  1.1410e-02, -2.5117e-01,  5.1932e-03,  2.5436e-01,
+        -1.5783e-01, -1.1983e-01,  8.5068e-02,  8.0420e-02,  1.6936e-02,
+        -1.6662e-01,  1.9164e-01, -1.8567e-01,  1.5656e-02, -2.5625e-01,
+         5.6905e-03,  2.6249e-01, -1.6230e-01, -1.2032e-01,  8.5396e-02,
+         9.0806e-02,  1.0014e-02, -1.8239e-01,  1.8849e-01, -1.7716e-01,
+         2.0192e-02, -2.6133e-01,  6.0388e-03,  2.7012e-01, -1.6582e-01,
+        -1.2128e-01,  8.5782e-02,  1.0013e-01,  3.0940e-03, -1.9771e-01,
+         1.8476e-01, -1.6834e-01,  2.5074e-02, -2.6638e-01,  6.2143e-03,
+         2.7724e-01, -1.6846e-01, -1.2269e-01,  8.6239e-02,  1.0847e-01,
+        -3.7359e-03, -2.1250e-01,  1.8044e-01, -1.5932e-01,  3.0278e-02,
+        -5.1723e-01,  9.1155e-02,  8.9680e-01, -6.3272e-01,  3.1432e-02,
+        -5.2664e-02,  1.2350e+00, -6.6426e-01, -1.6495e+00, -2.1604e-01,
+         7.7561e-01,  4.0128e-01, -5.1889e-01,  7.3807e-02,  8.5478e-01,
+        -5.3224e-01, -1.9438e-02, -4.6605e-02,  1.1211e+00, -6.8913e-01,
+        -1.6113e+00, -2.7051e-01,  8.2109e-01,  4.2715e-01, -5.1919e-01,
+         5.8603e-02,  8.0754e-01, -4.3359e-01, -6.9138e-02, -3.8301e-02,
+         1.0110e+00, -6.9727e-01, -1.5686e+00, -3.2818e-01,  8.5868e-01,
+         4.5695e-01, -5.1811e-01,  4.2626e-02,  7.5603e-01, -3.3826e-01,
+        -1.1535e-01, -2.9779e-02,  9.0647e-01, -6.9435e-01, -1.5211e+00,
+        -3.8702e-01,  8.8693e-01,  4.9264e-01, -5.1559e-01,  2.3728e-02,
+         7.0496e-01, -2.5094e-01, -1.5831e-01, -1.7401e-02,  8.0942e-01,
+        -6.8320e-01, -1.4671e+00, -4.4516e-01,  9.0589e-01,  5.2360e-01,
+        -2.2087e-01,  9.9615e-02, -1.8590e-01,  8.2063e-01, -2.1423e-01,
+         1.6019e-01,  4.6371e-02,  2.1793e-02, -7.0565e-01,  1.2000e+00,
+        -6.5580e-01,  2.6194e-02, -2.2537e-01,  9.1871e-02, -1.9521e-01,
+         8.0479e-01, -2.2496e-01,  1.5557e-01,  5.9959e-02,  2.4091e-02,
+        -7.1215e-01,  1.2000e+00, -6.4890e-01,  3.2230e-02, -2.3014e-01,
+         8.5779e-02, -2.0575e-01,  7.8718e-01, -2.3647e-01,  1.5198e-01,
+         7.3705e-02,  2.4522e-02, -7.1830e-01,  1.2000e+00, -6.4237e-01,
+         3.8725e-02, -2.3498e-01,  8.0840e-02, -2.1570e-01,  7.6975e-01,
+        -2.4725e-01,  1.4806e-01,  8.7344e-02,  2.3209e-02, -7.2331e-01,
+         1.2000e+00, -6.3573e-01,  4.4474e-02, -2.3995e-01,  7.7108e-02,
+        -2.2448e-01,  7.5312e-01, -2.5688e-01,  1.4345e-01,  1.0021e-01,
+        -2.2448e-01,  7.5312e-01, -2.5688e-01,  1.4345e-01,  1.0021e-01,
+         2.0559e-02, -7.2748e-01,  1.2000e+00, -6.2875e-01,  4.9381e-02};
+    
+    std::copy(state_buffer_.begin(), state_buffer_.end(), input_states_buffer[input_obs_idx_].begin());
+
+    output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names_char.data(), input_tensors.data(), input_number, output_names_char.data(), output_number);
+
+    for (size_t i = 0; i < output_tensors.size(); i++) {
+        if (!output_tensors[i].IsTensor()) {
+            std::cerr << "Output " << i << " is not a valid tensor." << std::endl;
+            continue;
+        }
+    }
+
+    // output tensor to rl_action_
+    for (size_t i = 0; i < num_action; i++) {
+        rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
+    } 
+    std::cout << "RL Action: " << rl_action_.transpose() << std::endl;
 }
 
 void CustomController::processNoise()
@@ -173,23 +241,25 @@ void CustomController::processNoise()
     }
     else
     {
-        std::random_device rd;  
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> dis(-0.00001, 0.00001);
-        for (int i = 0; i < MODEL_DOF; i++) {
-            q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
-        }
-        if (time_cur_ - time_pre_ > 0.0)
-        {
-            q_vel_noise_ = (q_noise_ - q_noise_pre_) / (time_cur_ - time_pre_);
-            q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
-        }
-        else
-        {
-            q_vel_noise_ = q_vel_noise_;
-            q_dot_lpf_ = q_dot_lpf_;
-        }
-        q_noise_pre_ = q_noise_;
+        // std::random_device rd;  
+        // std::mt19937 gen(rd());
+        // std::uniform_real_distribution<> dis(-0.00001, 0.00001);
+        // for (int i = 0; i < MODEL_DOF; i++) {
+        //     q_noise_(i) = rd_cc_.q_virtual_(6+i) + dis(gen);
+        // }
+        // if (time_cur_ - time_pre_ > 0.0)
+        // {
+        //     q_vel_noise_ = (q_noise_ - q_noise_pre_) / (time_cur_ - time_pre_);
+        //     q_dot_lpf_ = DyrosMath::lpf<MODEL_DOF>(q_vel_noise_, q_dot_lpf_, 1/(time_cur_ - time_pre_), 4.0);
+        // }
+        // else
+        // {
+        //     q_vel_noise_ = q_vel_noise_;
+        //     q_dot_lpf_ = q_dot_lpf_;
+        // }
+        // q_noise_pre_ = q_noise_;
+        q_noise_ = rd_cc_.q_virtual_.segment(6,MODEL_DOF);
+        q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
     }
     time_pre_ = time_cur_;
 }
@@ -198,79 +268,44 @@ void CustomController::processObservation()
 {
     int data_idx = 0;
     
-    // state_cur_[data_idx++] = rd_cc_.q_virtual_(2);
-
     Eigen::Quaterniond q;
     q.x() = rd_cc_.q_virtual_(3);
     q.y() = rd_cc_.q_virtual_(4);
     q.z() = rd_cc_.q_virtual_(5);
-    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);    
+    q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);  
 
-    euler_angle_ = DyrosMath::rot2Euler_tf(q.toRotationMatrix());
-    state_cur_[data_idx++] = euler_angle_(0);
-    state_cur_[data_idx++] = euler_angle_(1);
-    state_cur_[data_idx++] = euler_angle_(2);
+    // linear and angular velocity in base frame
+    Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
+    Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
+    for (int i = 0; i < 3; i++)
+    {state_cur_[data_idx++] = local_lin_vel_(i);}
+    for (int i = 0; i < 3; i++)
+    {state_cur_[data_idx++] = local_ang_vel_(i);}
 
-    for(int i = 0; i < 6; i++)
-    {
-        state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
-    }
-    // Vector3d local_lin_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(0,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     state_cur_[data_idx++] = local_lin_vel_(i);
-    // }
-    // Vector3d local_ang_vel_ = quatRotateInverse(q, rd_cc_.q_dot_virtual_.segment(3,3));
-    // for (int i=0; i<3; i++)
-    // {
-    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i+3);
-    // }
-    // for (int i = 3; i < 6; i++)
-    // {
-    //     state_cur_[data_idx++] = rd_cc_.q_dot_virtual_(i);
-    // }
+    // projected gravity vector
+    Eigen::Vector3d projected_gravity = quatRotateInverse(q, Eigen::Vector3d(0, 0, -1.0));
+    for (int i = 0; i < 3; i++)
+    {state_cur_[data_idx++] = projected_gravity(i);}
 
-    // if (rd_cc_.control_time_us_ < start_time_ + 5.0e6)
-    // {
-    //     desired_vel_x = 0.4;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 10.0e6)
-    // {
-    //     desired_vel_x = -0.3;
-    // }
-    // else if (rd_cc_.control_time_us_ < start_time_ + 15.0e6)
-    // {
-    //     desired_vel_x = 0.4;
-    // }
-    // else
-    // {
-    //     desired_vel_x = 0.0;
-    // // }
-    // desired_vel_x = target_vel_x_;
-    // state_cur_[data_idx++] = desired_vel_x;
+    // clock input
+    state_cur_[data_idx++] = sin(2 * M_PI * time_cur_ / step_time_); // sin wave with period of 10 seconds
+    // state_cur_[data_idx++] = cos(2 * M_PI * time_cur_ / step_time_); // cos wave with period of 10 seconds
+    state_cur_[data_idx++] = -sin(2 * M_PI * time_cur_ / step_time_); // cos wave with period of 10 seconds
+
+    // Velocity Commands
+    state_cur_[data_idx++] = 0.3;
     // state_cur_[data_idx++] = 0.0;
     // state_cur_[data_idx++] = 0.0;
-
-    // desired_vel_x = DyrosMath::cubic(rd_cc_.control_time_us_, start_time_, start_time_ + 5.0e6, 0.0, 0.3, 0.0, 0.0);
-    // state_cur_[data_idx++] = desired_vel_x;
-
-    // desired_vel_x = 0.3;
-    // desired_vel_yaw = 0.0;
-
-    // state_cur_[data_idx++] = desired_vel_x;
-    // state_cur_[data_idx++] = 0.0;
-    // state_cur_[data_idx++] = desired_vel_yaw;
-
-    state_cur_[data_idx++] = target_vel_x_;
+    // state_cur_[data_idx++] = target_vel_x_;
     state_cur_[data_idx++] = target_vel_y_;
     state_cur_[data_idx++] = target_vel_yaw_;
 
-    for (int i = 0; i < num_actuator_action; i++)
+    for (int i = 0; i < 12; i++)
     {
-        state_cur_[data_idx++] = q_noise_(i);
+        state_cur_[data_idx++] = q_noise_(i) - q_init_(i);;
     }
 
-    for (int i = 0; i < num_actuator_action; i++)
+    for (int i = 0; i < 12; i++)
     {
         if (is_on_robot_)
         {
@@ -282,53 +317,22 @@ void CustomController::processObservation()
         }
     }
 
-    for (int i = 0; i <num_actuator_action; i++) 
+    for (int i = 0; i < 12; i++) 
     {
-        state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
-    }
-    
-    size_t buffer_size = num_cur_state*num_state_skip*num_state_hist;
-    std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
-    std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + buffer_size - num_cur_state);
-
-    // Internal State First
-    for (size_t i = 0; i < num_state_hist; ++i) {
-        std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1),
-                  state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1) - 1) + num_cur_internal_state,
-                  input_states_buffer[input_obs_idx_].begin() + num_cur_internal_state * i);
+        // state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
+        state_cur_[data_idx++] = target_pos(i);
     }
 
-    // Action History Second
-    for (size_t i = 0; i < num_state_hist - 1; ++i) {
-        std::copy(state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state,
-                  state_buffer_.begin() + num_cur_state * (num_state_skip * (i + 1)) + num_cur_internal_state + num_action,
-                  input_states_buffer[input_obs_idx_].begin() + num_state_hist * num_cur_internal_state + num_action * i);
-    }
+    // Shift the buffer to the left and add the new state at the end
+    std::copy(state_buffer_.begin()+num_cur_state, state_buffer_.end(), state_buffer_.begin());
+    std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.end()-num_cur_state);
 
-    if (is_hist_encoder_){
-        std::copy(state_long_hist_.begin() + num_cur_state, state_long_hist_.end(), state_long_hist_.begin());
-        std::copy(state_cur_.begin(), state_cur_.end(), state_long_hist_.begin() + num_hist_state * num_cur_state - num_cur_state);
-
-        for (size_t i = 0; i < num_long_hist_len; ++i) {
-            std::copy(state_long_hist_.begin() + num_cur_state * (num_long_hist_skip * (i + 1) - 1),
-                      state_long_hist_.begin() + num_cur_state * (num_long_hist_skip * (i + 1)),
-                      state_long_hist_buffer_.begin() + num_cur_state * i);
-        }
-        // transpose state_long_hist_buffer_(50,49) to input_states_buffer_(49,50)
-        for (size_t i = 0; i < num_long_hist_len; ++i) {
-            for (size_t j = 0; j < num_cur_state; ++j) {
-                input_states_buffer[0][j * num_long_hist_len + i] = state_long_hist_buffer_[i * num_cur_state + j];
-            }
-        }
-
-    }
-
+    // update the input tensor for ONNX feedforward
+    std::copy(state_buffer_.begin(), state_buffer_.end(), input_states_buffer[input_obs_idx_].begin());
 }
 
 void CustomController::feedforwardPolicy()
 {
-    // std::fill(input_states_buffer[0].begin(), input_states_buffer[0].end(), 0.0);
-    // std::fill(input_states_buffer[1].begin(), input_states_buffer[1].end(), 0.0);
     output_tensors = session.Run(Ort::RunOptions{nullptr}, input_names_char.data(), input_tensors.data(), input_number, output_names_char.data(), output_number);
 
     for (size_t i = 0; i < output_tensors.size(); i++) {
@@ -342,9 +346,8 @@ void CustomController::feedforwardPolicy()
     for (size_t i = 0; i < num_action; i++) {
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
-    // cout << "RL Action: " << rl_action_.transpose() << endl;
     // output tensor to value_
-    value_ = output_tensors[2].GetTensorMutableData<float>()[0];
+    value_ = output_tensors[1].GetTensorMutableData<float>()[0];
 
 }
 
@@ -371,18 +374,6 @@ void CustomController::computeSlow()
             processNoise();
             processObservation();
             feedforwardPolicy();
-            for (int i = 0; i < num_state_skip*num_state_hist; i++) 
-            {
-                std::fill(state_buffer_.begin() + num_cur_state * i, state_buffer_.begin() + num_cur_state * (i + 1), 0.0);
-                // std::copy(state_cur_.begin(), state_cur_.begin(), state_buffer_.begin() + num_cur_state * i);
-            }
-            if (is_hist_encoder_)
-            {
-                for (size_t i = 0; i < num_hist_state; ++i) {
-                    std::fill(state_long_hist_.begin() + num_cur_state * i, state_long_hist_.begin() + num_cur_state * (i + 1), 0.0);
-                    // std::copy(state_cur_.begin(), state_cur_.end(), state_long_hist_.begin() + i * num_cur_state);
-                }
-            }   
         }
 
         processNoise();
@@ -394,7 +385,7 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            if (value_ < 100.0)
+            if (value_ < 1.0)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
@@ -405,36 +396,17 @@ void CustomController::computeSlow()
                     std::cout << "Stop by Value Function" << std::endl;
                 }
             }
-            if (is_write_file_)
-            {
-                // writeFile << rd_cc_.q_virtual_(2) << "\t";
-                // writeFile << rd_cc_.q_dot_virtual_(2) << "\t";
-                // writeFile << desired_vel_x << "\t";
-                // writeFile << -rd_cc_.LF_CF_FT(2) << "\t" << -rd_cc_.RF_CF_FT(2);
-                
-                for (int i = 0; i < num_actuator_action; i++) {
-                    torq_diff_(i) = (rl_action_(i) - rl_action_pre_(i))*torque_bound_(i);
-                    energy(i) = rl_action_(i) * torque_bound_(i) * q_vel_noise_(i);
-                }                
-                writeFile << rd_cc_.control_time_ << "\t";
-                writeFile << torq_diff_.norm() << "\t";
-                writeFile << (q_vel_noise_ - q_vel_noise_pre_).norm() << "\t";
-                writeFile << q_vel_noise_.norm() << "\t";
-                writeFile << energy.sum() << "\t";
-                writeFile << std::pow((desired_vel_x - rd_cc_.q_dot_virtual_(0)),2) + std::pow((desired_vel_yaw - rd_cc_.q_dot_virtual_(5)),2);
-                
-                writeFile << std::endl;
-            }
-
-
-            
+            // if (is_write_file_)
+            // {
+            // }
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
-        Vector12d target_pos;
         for (int i = 0; i < num_actuator_action; i++)
         {
             // torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
-            target_pos(i) = action_offset_(i,i) + rl_action_(i) * action_scale_(i,i);
+            float action_value = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
+            target_pos(i) = action_offset(i) + action_value * action_scale(i);
+            // target_pos(i) = action_offset(i) + rl_actions(i) * action_scale(i);
         }
         for (int i = 0; i < num_actuator_action; i++)
         {
@@ -442,7 +414,7 @@ void CustomController::computeSlow()
         }
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
         {
-            torque_rl_(i) = kp_(i,i) * (q_init_(i) - q_noise_(i)) - kv_(i,i)*q_vel_noise_(i);
+            torque_rl_(i) = kp_(i,i) / 9.0 * (q_init_(i) - q_noise_(i)) - kv_(i,i) / 3.0 * q_vel_noise_(i);
         }
         
         if (rd_cc_.control_time_us_ < start_time_ + 0.1e6)
@@ -500,6 +472,16 @@ void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
     target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1]*0.5, -0.5, 0.5);
     target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.0, 0.0);
     target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3]*0.5, -0.4, 0.4);
+    if (joy->buttons[5] == 1){ // A button
+        step_time_ += 0.01;
+        step_time_ = DyrosMath::minmax_cut(step_time_, 1.0, 2.0);
+        cout << "Step time: " << step_time_ << endl;
+    }
+    if (joy->buttons[4] == 1){ // B button
+        step_time_ -= 0.01;
+        step_time_ = DyrosMath::minmax_cut(step_time_, 1.0, 2.0);
+        cout << "Step time: " << step_time_ << endl;
+    }
 }
 
 void CustomController::quatToTanNorm(const Eigen::Quaterniond& quaternion, Eigen::Vector3d& tangent, Eigen::Vector3d& normal) {

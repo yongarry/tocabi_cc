@@ -49,29 +49,20 @@ public:
     std::vector<float> state_long_hist_, state_long_hist_buffer_;
 
     int input_obs_idx_ = 0;
+    int debug = 0;
 
     ///////////////////////////////////// Actor-Critic Network ///////////////////////////////////////
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    // static const int num_cur_state = 49; // 37 + 12
-    static const int num_cur_state = 48; // 36 + 12
-    // static const int num_cur_internal_state = 37;
-    static const int num_cur_internal_state = 36;
-    static const int num_state_skip = 2;
-    // static const int num_state_skip = 1;
-    static const int num_state_hist = 10;
-    // static const int num_state_hist = 1;
-    static const int num_state = num_cur_internal_state*num_state_hist+num_action*(num_state_hist-1);
-    // static const int num_state = num_cur_internal_state +num_action;
 
-    // for long history observation
-    static const int num_long_hist_skip = 10;
-    static const int num_long_hist_len = 50;
-    static const int num_hist_state = num_long_hist_len * num_long_hist_skip;
-
-
+    static const int num_cur_state = 50; 
+    static const int num_hist_step = 5;
+    static const int num_state = num_cur_state * num_hist_step;
     Eigen::MatrixXd rl_action_, rl_action_pre_, torq_diff_, energy;
     double value_;
+
+    Vector12d action_offset, action_scale;
+    Vector12d target_pos;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     bool stop_by_value_thres_ = false;
@@ -127,14 +118,10 @@ public:
 
     Eigen::Vector3d local_lin_vel_;
 
-    Eigen::Matrix<double, 12, 12> action_offset_, 
-                                  action_scale_;
     double target_vel_x_ = 0.0;
     double target_vel_y_ = 0.0;
     double target_vel_yaw_ = 0.0;
-
-    float desired_vel_x = 0.0;
-    float desired_vel_yaw = 0.0;
+    double step_time_ = 1.8;
 
 private:
     Eigen::VectorQd ControlVal_;
