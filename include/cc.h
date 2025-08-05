@@ -63,6 +63,7 @@ public:
 
     Vector12d action_offset, action_scale;
     Vector12d target_pos;
+    bool pd_control_ = true; // use PD control or not
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     bool stop_by_value_thres_ = false;
@@ -74,6 +75,7 @@ public:
     bool is_on_robot_ = false;
     bool is_write_file_ = true;
     bool is_hist_encoder_ = false;
+
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 

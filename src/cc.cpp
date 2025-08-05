@@ -319,8 +319,10 @@ void CustomController::processObservation()
 
     for (int i = 0; i < 12; i++) 
     {
-        // state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
-        state_cur_[data_idx++] = target_pos(i);
+        if (pd_control_)
+            state_cur_[data_idx++] = target_pos(i);
+        else
+            state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
 
     // Shift the buffer to the left and add the new state at the end
@@ -385,38 +387,41 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            if (value_ < 1.0)
-            {
-                cout << "Value: " << value_ << endl;
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Value Function" << std::endl;
-                }
-            }
+            // if (value_ < 1.0)
+            // {
+            //     cout << "Value: " << value_ << endl;
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Value Function" << std::endl;
+            //     }
+            // }
             // if (is_write_file_)
             // {
             // }
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
+        // compute lower body torque from policy output
         for (int i = 0; i < num_actuator_action; i++)
         {
-            // torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
-            float action_value = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
-            target_pos(i) = action_offset(i) + action_value * action_scale(i);
-            // target_pos(i) = action_offset(i) + rl_actions(i) * action_scale(i);
+            if (pd_control_) {
+                float action_value = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
+                target_pos(i) = action_offset(i) + action_value * action_scale(i);
+                torque_rl_(i) = kp_(i,i) / 9.0 * (target_pos(i) - q_noise_(i)) - kv_(i,i) / 3.0 * q_vel_noise_(i);
+            }
+            else {
+                torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i)*torque_bound_(i), -torque_bound_(i), torque_bound_(i));
+            }
         }
-        for (int i = 0; i < num_actuator_action; i++)
-        {
-            torque_rl_(i) = kp_(i,i) / 9.0 * (target_pos(i) - q_noise_(i)) - kv_(i,i) / 3.0 * q_vel_noise_(i);
-        }
+        // compute upper body torque - maintain the initial pose
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
         {
             torque_rl_(i) = kp_(i,i) / 9.0 * (q_init_(i) - q_noise_(i)) - kv_(i,i) / 3.0 * q_vel_noise_(i);
         }
-        
+
+        // send torque command
         if (rd_cc_.control_time_us_ < start_time_ + 0.1e6)
         {
             for (int i = 0; i <MODEL_DOF; i++)
@@ -426,16 +431,12 @@ void CustomController::computeSlow()
             rd_.torque_desired = torque_spline_;
         }
         else
-        {
             rd_.torque_desired = torque_rl_;
-        }
+            // cout << "Torque Desired: " << rd_.torque_desired.transpose() << endl;
 
+        // stop by value function -> maintain the stop position
         if (stop_by_value_thres_)
-        {
             rd_.torque_desired = kp_ * (q_stop_ - q_noise_) - kv_*q_vel_noise_;
-        }
-
-
     }
     LF_CF_FT_pre = rd_cc_.LF_CF_FT;
     RF_CF_FT_pre = rd_cc_.RF_CF_FT;
