@@ -123,7 +123,7 @@ public:
     double target_vel_x_ = 0.0;
     double target_vel_y_ = 0.0;
     double target_vel_yaw_ = 0.0;
-    double step_time_ = 1.8;
+    double step_time_ = 1.2;
 
 private:
     Eigen::VectorQd ControlVal_;

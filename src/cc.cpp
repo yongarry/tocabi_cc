@@ -90,7 +90,7 @@ void CustomController::loadOnnX()
     // string cur_path = "/home/yong/ros1_ws/tocabi_ws/src/tocabi_cc/policy/" + weight_dir_;
     if (is_on_robot_)
     {
-        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/" + weight_dir_;
+        cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/policy/" + weight_dir_;
     }
 
     Ort::SessionOptions session_options;
