@@ -293,10 +293,10 @@ void CustomController::processObservation()
     state_cur_[data_idx++] = -sin(2 * M_PI * time_cur_ / step_time_); // cos wave with period of 10 seconds
 
     // Velocity Commands
-    state_cur_[data_idx++] = 0.3;
+    // state_cur_[data_idx++] = 0.3;
     // state_cur_[data_idx++] = 0.0;
     // state_cur_[data_idx++] = 0.0;
-    // state_cur_[data_idx++] = target_vel_x_;
+    state_cur_[data_idx++] = target_vel_x_;
     state_cur_[data_idx++] = target_vel_y_;
     state_cur_[data_idx++] = target_vel_yaw_;
 
@@ -464,7 +464,8 @@ void CustomController::copyRobotData(RobotData &rd_l)
 void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
     target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0]*0.5, -0.5, 0.5);
-    target_vel_y_ = 0.0; // DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
+    // target_vel_y_ = 0.0;
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
     target_vel_yaw_ = -DyrosMath::minmax_cut(joy->axes[2]*0.3, -0.3, 0.3);
 }
 
