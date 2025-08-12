@@ -463,9 +463,9 @@ void CustomController::copyRobotData(RobotData &rd_l)
 
 void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
-    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0]*0.5, -0.5, 0.5);
+    target_vel_x_ = DyrosMath::minmax_cut(joy->axes[0]*0.8, -0.8, 0.8);
     // target_vel_y_ = 0.0;
-    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1], -0.0, 0.0);
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[1]*0.4, -0.4, 0.4);
     target_vel_yaw_ = -DyrosMath::minmax_cut(joy->axes[2]*0.3, -0.3, 0.3);
 }
 
