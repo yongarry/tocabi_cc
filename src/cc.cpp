@@ -20,7 +20,7 @@ CustomController::CustomController(RobotData &rd)
         }
         else
         {
-            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/"+weight_dir_+"data.csv", std::ofstream::out | std::ofstream::trunc);
+            writeFile.open("/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/result/data.csv", std::ofstream::out | std::ofstream::trunc);
         }
         writeFile << std::fixed << std::setprecision(8);
     }
@@ -364,8 +364,9 @@ void CustomController::computeSlow()
             start_time_ = rd_cc_.control_time_us_;
             q_noise_pre_ = q_noise_ = q_init_ = rd_cc_.q_virtual_.segment(6,MODEL_DOF);
             time_cur_ = start_time_ / 1e6;
-            time_pre_ = time_cur_ - 0.005;
-            time_inference_pre_ = rd_cc_.control_time_us_ - (1/249.9)*1e6;
+            time_pre_ = time_cur_ - 0.01;
+            // time_inference_pre_ = rd_cc_.control_time_us_ - (1/249.9)*1e6;
+            time_inference_pre_ = rd_cc_.control_time_us_ - (1/99.9)*1e6;
             // ft_left_init_ = abs(rd_cc_.LF_FT(2));
             // ft_right_init_ = abs(rd_cc_.RF_FT(2));
 
@@ -387,20 +388,25 @@ void CustomController::computeSlow()
             processObservation();
             feedforwardPolicy();
             
-            // if (value_ < 1.0)
-            // {
-            //     cout << "Value: " << value_ << endl;
-            //     if (stop_by_value_thres_ == false)
-            //     {
-            //         stop_by_value_thres_ = true;
-            //         stop_start_time_ = rd_cc_.control_time_us_;
-            //         q_stop_ = q_noise_;
-            //         std::cout << "Stop by Value Function" << std::endl;
-            //     }
-            // }
-            // if (is_write_file_)
-            // {
-            // }
+            if (value_ < 1.0)
+            {
+                cout << "Value: " << value_ << endl;
+                if (stop_by_value_thres_ == false)
+                {
+                    stop_by_value_thres_ = true;
+                    stop_start_time_ = rd_cc_.control_time_us_;
+                    q_stop_ = q_noise_;
+                    std::cout << "Stop by Value Function" << std::endl;
+                }
+            }
+            if (is_write_file_)
+            {
+                writeFile << time_cur_ << "\t";
+                writeFile << rd_cc_.q_virtual_.segment(3,3).transpose() << "\t";
+                writeFile << rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1) << "\t";
+                writeFile << rd_cc_.q_dot_virtual_.segment(0,3).transpose() << "\t";
+                writeFile << rd_cc_.q_dot_virtual_.segment(3,3).transpose() << "\t" << endl;
+            }
             time_inference_pre_ = rd_cc_.control_time_us_;
         }
         // compute lower body torque from policy output
@@ -472,8 +478,8 @@ void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 void CustomController::xBoxJoyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 {
     target_vel_x_ = DyrosMath::minmax_cut(joy->axes[1]*0.5, -0.5, 0.5);
-    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.0, 0.0);
-    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3]*0.5, -0.4, 0.4);
+    target_vel_y_ = DyrosMath::minmax_cut(joy->axes[0], -0.3, 0.3);
+    target_vel_yaw_ = DyrosMath::minmax_cut(joy->axes[3]*0.4, -0.4, 0.4);
     if (joy->buttons[5] == 1){ // A button
         step_time_ += 0.01;
         step_time_ = DyrosMath::minmax_cut(step_time_, 1.0, 2.0);
