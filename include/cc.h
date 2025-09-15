@@ -67,6 +67,7 @@ public:
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     bool stop_by_value_thres_ = false;
+    bool use_value_stop = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_stop_;
     float stop_start_time_;
 

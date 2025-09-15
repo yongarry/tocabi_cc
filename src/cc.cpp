@@ -11,6 +11,7 @@ CustomController::CustomController(RobotData &rd)
     ControlVal_.setZero();
 
     nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
+    nh_.getParam("/tocabi_cc/is_pd_control", pd_control_);
     
     if (is_write_file_)
     {
@@ -293,12 +294,12 @@ void CustomController::processObservation()
     state_cur_[data_idx++] = -sin(2 * M_PI * time_cur_ / step_time_); // cos wave with period of 10 seconds
 
     // Velocity Commands
-    // state_cur_[data_idx++] = 0.3;
-    // state_cur_[data_idx++] = 0.0;
-    // state_cur_[data_idx++] = 0.0;
-    state_cur_[data_idx++] = target_vel_x_;
-    state_cur_[data_idx++] = target_vel_y_;
-    state_cur_[data_idx++] = target_vel_yaw_;
+    state_cur_[data_idx++] = 0.3;
+    state_cur_[data_idx++] = 0.0;
+    state_cur_[data_idx++] = 0.0;
+    // state_cur_[data_idx++] = target_vel_x_;
+    // state_cur_[data_idx++] = target_vel_y_;
+    // state_cur_[data_idx++] = target_vel_yaw_;
 
     for (int i = 0; i < 12; i++)
     {
@@ -387,8 +388,8 @@ void CustomController::computeSlow()
         {
             processObservation();
             feedforwardPolicy();
-            
-            if (value_ < 1.0)
+
+            if (value_ < 1.0 && use_value_stop == true)
             {
                 cout << "Value: " << value_ << endl;
                 if (stop_by_value_thres_ == false)
