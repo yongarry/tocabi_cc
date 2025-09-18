@@ -1,37 +1,14 @@
-d1 = load('data.csv');
-d2 = load('data_low_frictionloss.csv');
-
-figure();
-for i=1:12
-    subplot(2,6,i);
-    plot(d1(:,i));
-    hold on
-    plot(d2(:,i));
-end
-
-figure();
-for i=13:33
-    subplot(4,6,i-12);
-    plot(d1(:,i));
-    hold on
-    plot(d2(:,i));
-end
-
-%%
-clear all
-d3 = load('data.csv');
-
-figure();
-for i=1:33
-    subplot(6,6,i);
-    plot(d3(:,1),d3(:,7+i))
-end
+% import csv data to matrix
+data = importdata('eval_data.csv');
+xy = data(:,1);
+x = data(:,2);
+y = data(:,3);
+yaw = data(:,4);
 
 
-figure();
-for i=1:33
-    subplot(6,6,i);
-    plot(d3(:,1),d3(:,73+i))
-    hold on
-plot(d3(:,1),d3(:,106+i))
-end
+%means_intern = [mean(xy),mean(x),mean(y),mean(yaw)]
+%stds_intern = [std(xy),std(x),std(y),std(yaw)]
+means_heuri = [mean(xy),mean(x),mean(y),mean(yaw)]
+stds_heuri = [std(xy),std(x),std(y),std(yaw)]
+%means_ral = [mean(xy),mean(x),mean(y),mean(yaw)]
+%stds_ral = [std(xy),std(x),std(y),std(yaw)]

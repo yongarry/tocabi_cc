@@ -55,10 +55,11 @@ public:
 
     static const int num_action = 12;
     static const int num_actuator_action = 12;
-    static const int num_cur_state = 65;
+    int num_cur_state = 65;
+    static const int num_cur_state_intern = 51;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
-    static const int num_state = num_cur_state * num_state_hist;
+    int num_state = num_cur_state * num_state_hist;
 
     Eigen::MatrixXd rl_action_;
 
@@ -228,6 +229,7 @@ public:
 
     
     Eigen::MatrixXd ref_zmp_;
+    Eigen::MatrixXd ref_com_xy_vel_; // for heuristic com planner
     Eigen::MatrixXd ref_zmp_container;
     Eigen::MatrixXd ref_zmp_thread3;
     Eigen::VectorXd ref_com_yaw_;
@@ -299,7 +301,8 @@ public:
 
     bool ideal_preview = false;
 
-    int ctrl_mode = 0; // 0 for Joystick Mode 1 for Stepping Stone, 2 for Random Command, 3 for Data Collection
+    int ctrl_mode = 2; // 0 for Joystick Mode 1 for Stepping Stone, 2 for Random Command, 3 for Data Collection
+    int policy_mode = 0; // 0 for ral, 1 for heuri, 2 for intern
     int current_step_number = 0;
     int planned_step_number = 30; // 30
     Eigen::VectorXd foothold_x_planned; // These are the locations and desired yaw angles of the stepping stones, in global frame coordinates.
@@ -411,6 +414,9 @@ public:
     void addZmpOffset();
     void zmpGenerator(const unsigned int norm_size);
     void onestepZmp(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd& temp_yaw, Eigen::VectorXd &temp_yawvel);
+    void comHeuristicGenerator(const unsigned int norm_size);
+    void onestepCoMHeuri(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel); // CoM Yaw as well.
+    void onestepCoMHeuri2(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel); // CoM Yaw as well.
 
     void getComTrajectory(); 
     void previewcontroller(double dt, int NL, int tick, 

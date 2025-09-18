@@ -10,6 +10,7 @@ CustomController::CustomController(RobotData &rd)
 {
     ControlVal_.setZero();
     nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
+    nh_.getParam("/tocabi_cc/policy_mode", policy_mode); // 0 for ral, 1 for heuri, 2 for intern
 
     if (is_write_file_)
     {
@@ -27,7 +28,6 @@ CustomController::CustomController(RobotData &rd)
     }
     initVariable();
     std::cout << "Load network start\n" << std::endl;
-
     loadNetwork();
     std::cout << "Load network end\n" << std::endl;
 
@@ -41,6 +41,12 @@ Eigen::VectorQd CustomController::getControl()
 
 void CustomController::loadNetwork()
 {
+    // only the intern policy uses different obs size
+    if (policy_mode == 2)
+    {
+        num_cur_state = num_cur_state_intern;
+        num_state = num_cur_state_intern * num_state_hist;
+    }
     state_.resize(num_state, 0);
     rl_action_.resize(num_action, 1);
 
@@ -308,23 +314,22 @@ void CustomController::processObservation() // [linvel, angvel, proj_grav, comma
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);   
     
+    // 1. base lin vel, ang vel
     base_lin_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(0,3));
     base_ang_vel = (rd_cc_.q_dot_virtual_.segment(3,3));
 
     for (int i = 0; i < 3; i++){
         state_cur_[data_idx++] = base_lin_vel(i);
     }
-
     for (int i = 0; i < 3; i++){
         state_cur_[data_idx++] = base_ang_vel(i);
     }
 
-
+    // 2. projected gravity or quaternion
     // state_cur_[data_idx++] = q.x();
     // state_cur_[data_idx++] = q.y();
     // state_cur_[data_idx++] = q.z();
     // state_cur_[data_idx++] = q.w();
-
     Vector3_t grav, projected_grav;
     grav << 0, 0, -1.;
     projected_grav = q.conjugate()*grav;
@@ -332,11 +337,13 @@ void CustomController::processObservation() // [linvel, angvel, proj_grav, comma
     state_cur_[data_idx++] = projected_grav(1);
     state_cur_[data_idx++] = projected_grav(2);
 
+    // 3. joint positions
     for (int i = 0; i < num_actuator_action; i++)
     {
         state_cur_[data_idx++] = q_noise_(i) - q_init_(i);
     }
 
+    // 4. joint velocities
     for (int i = 0; i < num_actuator_action; i++)
     {
         if (is_on_robot_)
@@ -345,38 +352,53 @@ void CustomController::processObservation() // [linvel, angvel, proj_grav, comma
             state_cur_[data_idx++] = q_vel_noise_(i); //rd_cc_.q_dot_virtual_(i+6);
     }
 
-    for (int i = 0; i < num_actuator_action; i++)
+    // 5. target joint positions
+    if (policy_mode == 0 || policy_mode == 1) // ral or heuri
     {
-        state_cur_[data_idx++] = q_leg_desired_(i);
+        for (int i = 0; i < num_actuator_action; i++)
+            state_cur_[data_idx++] = q_leg_desired_(i);
     }
 
-    state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
-    state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
-
-    state_cur_[data_idx++] = step_length_x_(0);
-    state_cur_[data_idx++] = step_length_y_(0);
-    state_cur_[data_idx++] = step_yaw_(0);
-    state_cur_[data_idx++] = t_dsp_seconds(0);
-    state_cur_[data_idx++] = t_ssp_seconds(0);
-    state_cur_[data_idx++] = foot_height_(0);
-
+    // 6. phase input
+    // 7. LIPM foot commands
+    if (policy_mode == 0 || policy_mode == 1) // ral or heuri
+    {
+        state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
+        state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
+        state_cur_[data_idx++] = step_length_x_(0);
+        state_cur_[data_idx++] = step_length_y_(0);
+        state_cur_[data_idx++] = step_yaw_(0);
+        state_cur_[data_idx++] = t_dsp_seconds(0);
+        state_cur_[data_idx++] = t_ssp_seconds(0);
+        state_cur_[data_idx++] = foot_height_(0);
+    }
+    else if (policy_mode == 2) // intern
+    {
+        state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
+        state_cur_[data_idx++] = -sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
+        state_cur_[data_idx++] = step_length_x_(0);
+        state_cur_[data_idx++] = step_length_y_(0);
+        state_cur_[data_idx++] = 0.48;
+        Eigen::Quaterniond support_foot_quat; 
+        support_foot_quat = Eigen::Quaterniond(supportfoot_global_init_yaw_.linear());
+        double error = q.w() * support_foot_quat.w() + q.x() * support_foot_quat.x() + q.y() * support_foot_quat.y() + q.z() * support_foot_quat.z();
+        state_cur_[data_idx++] = 50 * (1 - error * error);
+    }
+    
+    // 8. previous action
     for (int i = 0; i <num_actuator_action; i++) 
     {
         state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
 
-    // state_buffer_.block(0, 0, num_cur_state*(num_state_skip*num_state_hist-1),1) = state_buffer_.block(num_cur_state, 0, num_cur_state*(num_state_skip*num_state_hist-1),1);
     std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
-    // state_buffer_.block(num_cur_state*(num_state_skip*num_state_hist-1), 0, num_cur_state,1) = state_cur_;
     std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*(num_state_skip*num_state_hist-1));
 
     for (int i = 0; i < num_state_hist; i++){
-        // state_.block(num_cur_state*i, 0, num_cur_state, 1) = state_buffer_.block(num_cur_state*(num_state_skip*(i+1)-1), 0, num_cur_state, 1);
         std::copy(state_buffer_.begin() + num_cur_state*(num_state_skip*(i+1)-1), state_buffer_.begin() + num_cur_state*(num_state_skip*(i+1)-1) + num_cur_state, state_.begin() + num_cur_state*i);
     }
 }
 
-// ELU VERSION
 void CustomController::feedforwardPolicy()
 {
     // update the input tensor for ONNX feedforward
@@ -719,7 +741,7 @@ void CustomController::computeSlow()
             // std::cout << "processObservation and feedforwardPolicy took " << duration << " us" << std::endl;
 
             action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*5/hz_, 0.0, 5/hz_);
-            if (value_ < -100.0)
+            if (value_ < 10.0)
             {
                 if (stop_by_value_thres_ == false)
                 {
@@ -1033,7 +1055,7 @@ void CustomController::updateFootstepCommand(){
         double swing_yaw = std::atan2(2.0 * (q1.w() * q1.z() + q1.x() * q1.y()),
                              1.0 - 2.0 * (q1.y() * q1.y() + q1.z() * q1.z()));
         std::cout << "Foot Yaw error : " << sqrt(pow(wrap_to_pi(swing_yaw - step_yaw_(0)), 2)) << " [rad]" << std::endl;
-        
+        std::cout << "t_total: " << t_total_(0) << std::endl;
 
         x_error = (step_length_x_(0) - swing_state_stance_frame_(0)) ;
         y_error = (step_length_y_(0) - swing_state_stance_frame_(1)) ;
@@ -1052,23 +1074,15 @@ void CustomController::updateFootstepCommand(){
         }
 
         step_length_x_.segment(0,number_of_foot_step-1) = step_length_x_.segment(1,number_of_foot_step-1);
-
         step_length_y_.segment(0,number_of_foot_step-1) = step_length_y_.segment(1,number_of_foot_step-1);
-
         step_yaw_.segment(0,number_of_foot_step-1) = step_yaw_.segment(1,number_of_foot_step-1);
-
         t_dsp_.segment(0,number_of_foot_step-1) = t_dsp_.segment(1,number_of_foot_step-1);
         t_dsp_seconds.segment(0,number_of_foot_step-1) = t_dsp_seconds.segment(1,number_of_foot_step-1);
-
         t_ssp_.segment(0,number_of_foot_step-1) = t_ssp_.segment(1,number_of_foot_step-1);
         t_ssp_seconds.segment(0,number_of_foot_step-1) = t_ssp_seconds.segment(1,number_of_foot_step-1);
-
         t_total_.segment(0, number_of_foot_step-1) = t_total_.segment(1, number_of_foot_step-1);
-
         foot_height_.segment(0,number_of_foot_step-1) = foot_height_.segment(1,number_of_foot_step-1);
-
         phase_indicator_.segment(0,number_of_foot_step-1) = phase_indicator_.segment(1,number_of_foot_step-1);
-
         phase_indicator_(number_of_foot_step-1) = 1-phase_indicator_(number_of_foot_step-2);
 
         int step = number_of_foot_step-1;
@@ -1327,10 +1341,6 @@ void CustomController::calculateFootStepTotal()
         foot_step_support_frame_(i, 6) = 1-phase_indicator_(i);
     }
 
-
-
-
-
 }
 
 
@@ -1360,7 +1370,10 @@ void CustomController::getZmpTrajectory()
     norm_size = 4.0*hz_ ; // compute zmp over the three planned steps
     addZmpOffset(); 
 
-    zmpGenerator(norm_size);
+    if (policy_mode == 0)
+        zmpGenerator(norm_size);
+    else if (policy_mode == 1)
+        comHeuristicGenerator(norm_size);
 
 }
 
@@ -1371,13 +1384,10 @@ void CustomController::zmpGenerator(const unsigned int norm_size)
     Goal
     ----------
     -> To position the ZMP at the center of the foot sole according to the footstep planning to prevent the robot from falling during walking.
-
     Parameters
     ----------
     -> norm_size : The size of the previewed vector for the ZMP reference.
-
     -> planning_step_num : The number of footsteps to be predicted.
-
     Returns
     -------
     -> ref_zmp_ : The ZMP reference vector calculated based on the foot sole plan (size: 2 x norm_size).
@@ -1556,6 +1566,342 @@ void CustomController::onestepZmp(unsigned int current_step_number, Eigen::Vecto
 
 }
 
+void CustomController::comHeuristicGenerator(const unsigned int norm_size)
+{
+    ref_zmp_.setZero(norm_size, 2); // from here use this variable as com xy --> because i don't want to make new variable
+    ref_com_xy_vel_.setZero(norm_size, 2);
+    ref_com_yaw_.setZero(norm_size);
+    ref_com_yawvel_.setZero(norm_size);
+
+    Eigen::VectorXd temp_px;
+    Eigen::VectorXd temp_py;
+    Eigen::VectorXd temp_vx;
+    Eigen::VectorXd temp_vy;
+    Eigen::VectorXd temp_yaw;
+    Eigen::VectorXd temp_yawvel;
+
+    unsigned int index = 0;
+
+  
+    for (unsigned int i = 0; i < number_of_foot_step; i++)
+    {   
+        // onestepCoMHeuri(i, temp_px, temp_py, temp_vx, temp_vy, temp_yaw, temp_yawvel); // save 1-step zmp into temp px, py
+        onestepCoMHeuri2(i, temp_px, temp_py, temp_vx, temp_vy, temp_yaw, temp_yawvel); // save 1-step zmp into temp px, py
+        ref_zmp_.block(index, 0, t_total_(i), 1) = temp_px; 
+        ref_zmp_.block(index, 1, t_total_(i), 1) = temp_py;
+        ref_com_xy_vel_.block(index, 0, t_total_(i), 1) = temp_vx;
+        ref_com_xy_vel_.block(index, 1, t_total_(i), 1) = temp_vy;
+        ref_com_yaw_.segment(index, t_total_(i)) = temp_yaw;
+        ref_com_yawvel_.segment(index, t_total_(i)) = temp_yawvel;
+
+        index = index + t_total_(i);                                                          
+    }
+    if (t_total_.sum() < norm_size){
+        for (int i = t_total_.sum(); i < norm_size; i++){
+            ref_zmp_(i, 0) = ref_zmp_(i-1, 0);
+            ref_zmp_(i, 1) = ref_zmp_(i-1, 1);
+            ref_com_xy_vel_(i, 0) = ref_com_xy_vel_(i-1, 0);
+            ref_com_xy_vel_(i, 1) = ref_com_xy_vel_(i-1, 1);
+            ref_com_yaw_(i) = ref_com_yaw_(i-1);
+            ref_com_yawvel_(i) = ref_com_yawvel_(i-1);
+        }
+    }
+
+}
+
+void CustomController::onestepCoMHeuri(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel) // CoM Yaw as well.
+{
+    temp_px.setZero(t_total_(current_step_number));  
+    temp_py.setZero(t_total_(current_step_number));
+    temp_vx.setZero(t_total_(current_step_number));
+    temp_vy.setZero(t_total_(current_step_number));
+    temp_yaw.setZero(t_total_(current_step_number));
+    temp_yawvel.setZero(t_total_(current_step_number));
+
+    double v0_x_dsp1 = 0.0; double v0_y_dsp1 = 0.0;
+    double vT_x_dsp1 = 0.0; double vT_y_dsp1 = 0.0;
+    double v0_yaw_dsp1 = 0.0; double vT_yaw_dsp1 = 0.0;
+    double v0_x_ssp  = 0.0; double v0_y_ssp = 0.0;
+    double vT_x_ssp  = 0.0; double vT_y_ssp = 0.0;
+    double v0_yaw_ssp  = 0.0; double vT_yaw_ssp = 0.0;
+    double v0_x_dsp2 = 0.0; double v0_y_dsp2 = 0.0;
+    double vT_x_dsp2 = 0.0; double vT_y_dsp2 = 0.0;
+    double v0_yaw_dsp2 = 0.0; double vT_yaw_dsp2 = 0.0;
+
+    double t_dsp1_ = t_dsp_(current_step_number);
+    double t_dsp2_ = t_dsp_(current_step_number);
+    double t_ssp = t_ssp_(current_step_number);
+    double t_total = t_total_(current_step_number);    
+    
+    //TODO CoM Yaw implement
+    if (current_step_number == 0)
+    {
+        v0_x_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(0) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(0))/2;
+        vT_x_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(0) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(0))/4;
+
+        v0_y_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(1) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(1))/2;
+        vT_y_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(1) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(1))/4;
+
+        v0_yaw_dsp1 = DyrosMath::rot2Euler(phase_indicator_(0)*lfoot_support_init_yaw_.linear() + (1-phase_indicator_(0))*rfoot_support_init_yaw_.linear())(2)/2;
+        vT_yaw_dsp1 = v0_yaw_dsp1;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = v0_x_ssp;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = v0_y_ssp;
+        v0_yaw_ssp =  vT_yaw_dsp1;
+        vT_yaw_ssp = foot_step_support_frame_offset_(current_step_number - 0, 5) / 2.0;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 0)) / 4.0;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 1)) / 4.0;
+        v0_yaw_dsp2 = vT_yaw_ssp;
+        vT_yaw_dsp2 = v0_yaw_dsp2;
+
+
+    }
+    else if (current_step_number == 1)
+    { 
+        v0_x_dsp1 = (foot_step_support_frame_offset_(current_step_number - 1, 0)) / 4.0;
+        vT_x_dsp1 =  foot_step_support_frame_offset_(current_step_number - 1, 0) * 3.0 / 4.0;
+        v0_y_dsp1 = (foot_step_support_frame_offset_(current_step_number - 1, 1)) / 4.0;
+        vT_y_dsp1 =  foot_step_support_frame_offset_(current_step_number - 1, 1) * 3.0 / 4.0;
+        v0_yaw_dsp1 = foot_step_support_frame_offset_(current_step_number - 1, 5) / 2.0;
+        vT_yaw_dsp1 = v0_yaw_dsp1;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = v0_x_ssp;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = v0_y_ssp;
+        v0_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 1, 5) )/ 2.0;
+        vT_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_dsp2 =  vT_x_ssp;
+        vT_x_dsp2 = (foot_step_support_frame_offset_(current_step_number, 0) + foot_step_support_frame_offset_(current_step_number - 1, 0)) / 2.0;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = (foot_step_support_frame_offset_(current_step_number, 1) + foot_step_support_frame_offset_(current_step_number - 1, 1)) / 2.0;
+        v0_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+    }
+    else
+    {   
+        v0_x_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 0) + foot_step_support_frame_offset_(current_step_number - 1, 0)) / 2.0;
+        vT_x_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 0) + 3.0 * foot_step_support_frame_offset_(current_step_number - 1, 0)) / 4.0;
+        v0_y_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 1) + foot_step_support_frame_offset_(current_step_number - 1, 1)) / 2.0;
+        vT_y_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 1) + 3.0 * foot_step_support_frame_offset_(current_step_number - 1, 1)) / 4.0;
+        v0_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = v0_x_ssp;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = v0_y_ssp;
+        v0_yaw_ssp =  (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = (foot_step_support_frame_offset_(current_step_number - 1, 0) + foot_step_support_frame_offset_(current_step_number - 0, 0)) / 2.0;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = (foot_step_support_frame_offset_(current_step_number - 1, 1) + foot_step_support_frame_offset_(current_step_number - 0, 1)) / 2.0;
+        v0_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+    }
+
+    double lin_interpol = 0.0;
+    for (int i = 0; i < t_total; i++)
+    {
+        if (i < t_dsp1_) 
+        { 
+            // lin_interpol = i / (t_dsp1_);
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_dsp1 + lin_interpol * vT_x_dsp1;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_dsp1 + lin_interpol * vT_y_dsp1;
+            
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0.0, 0.0), min(v0_x_dsp1, vT_x_dsp1), max(v0_x_dsp1, vT_x_dsp1));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0.0, 0.0), min(v0_y_dsp1, vT_y_dsp1), max(v0_y_dsp1, vT_y_dsp1));
+            temp_vx(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0.0, 0.0), min(v0_yaw_dsp1, vT_yaw_dsp1), max(v0_yaw_dsp1, vT_yaw_dsp1));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0., 0.);
+        }
+        else if (i >= t_dsp1_ && i < t_dsp1_ + t_ssp)
+        {
+            // lin_interpol = (i - t_dsp1_) / t_ssp_;
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_ssp + lin_interpol * vT_x_ssp;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_ssp + lin_interpol * vT_y_ssp;
+
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_x_ssp, vT_x_ssp, 0.0, 0.0), min(v0_x_ssp, vT_x_ssp), max(v0_x_ssp, vT_x_ssp));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_y_ssp, vT_y_ssp, 0.0, 0.0), min(v0_y_ssp, vT_y_ssp), max(v0_y_ssp, vT_y_ssp));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_x_ssp, vT_x_ssp, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_y_ssp, vT_y_ssp, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0.0, 0.0), min(v0_yaw_ssp, vT_yaw_ssp), max(v0_yaw_ssp, vT_yaw_ssp));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0., 0.);
+        }
+        else
+        {
+            // lin_interpol = (i - t_dsp1_ - t_ssp_) / t_dsp2_;
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_dsp2 + lin_interpol * vT_x_dsp2;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_dsp2 + lin_interpol * vT_y_dsp2;
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0.0, 0.0), min(v0_x_dsp2, vT_x_dsp2), max(v0_x_dsp2, vT_x_dsp2));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0.0, 0.0), min(v0_y_dsp2, vT_y_dsp2), max(v0_y_dsp2, vT_y_dsp2));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0.0, 0.0), min(v0_yaw_dsp2, vT_yaw_dsp2), max(v0_yaw_dsp2, vT_yaw_dsp2));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0., 0.);
+        }
+        // std::cout << current_step_number << " step's temp_py " << i << " : " << temp_py(i) << std::endl;
+    }
+
+}
+
+void CustomController::onestepCoMHeuri2(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel) // CoM Yaw as well.
+{
+    temp_px.setZero(t_total_(current_step_number));  
+    temp_py.setZero(t_total_(current_step_number));
+    temp_vx.setZero(t_total_(current_step_number));
+    temp_vy.setZero(t_total_(current_step_number));
+    temp_yaw.setZero(t_total_(current_step_number));
+    temp_yawvel.setZero(t_total_(current_step_number));
+
+    double v0_x_dsp1 = 0.0; double v0_y_dsp1 = 0.0;
+    double vT_x_dsp1 = 0.0; double vT_y_dsp1 = 0.0;
+    double v0_yaw_dsp1 = 0.0; double vT_yaw_dsp1 = 0.0;
+    double v0_x_ssp  = 0.0; double v0_y_ssp = 0.0;
+    double vT_x_ssp  = 0.0; double vT_y_ssp = 0.0;
+    double v0_yaw_ssp  = 0.0; double vT_yaw_ssp = 0.0;
+    double v0_x_dsp2 = 0.0; double v0_y_dsp2 = 0.0;
+    double vT_x_dsp2 = 0.0; double vT_y_dsp2 = 0.0;
+    double v0_yaw_dsp2 = 0.0; double vT_yaw_dsp2 = 0.0;
+
+    double t_dsp1_ = t_dsp_(current_step_number);
+    double t_dsp2_ = t_dsp_(current_step_number);
+    double t_ssp = t_ssp_(current_step_number);
+    double t_total = t_total_(current_step_number);    
+    
+    //TODO CoM Yaw implement
+    if (current_step_number == 0)
+    {
+        v0_x_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(0) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(0))/2;
+        vT_x_dsp1 = v0_x_dsp1;
+
+        v0_y_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(1) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(1))/2;
+        vT_y_dsp1 = v0_y_dsp1;
+
+        v0_yaw_dsp1 = DyrosMath::rot2Euler(phase_indicator_(0)*lfoot_support_init_yaw_.linear() + (1-phase_indicator_(0))*rfoot_support_init_yaw_.linear())(2)/2;
+        vT_yaw_dsp1 = v0_yaw_dsp1;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 0)) / 2.0;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 1)) / 2.0;
+        v0_yaw_ssp =  vT_yaw_dsp1;
+        vT_yaw_ssp = foot_step_support_frame_offset_(current_step_number - 0, 5) / 2.0;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = v0_x_dsp2;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = v0_y_dsp2;
+        v0_yaw_dsp2 = vT_yaw_ssp;
+        vT_yaw_dsp2 = v0_yaw_dsp2;
+
+
+    }
+    else if (current_step_number == 1)
+    { 
+        v0_x_dsp1 = (foot_step_support_frame_offset_(current_step_number - 1, 0)) / 2.0;
+        vT_x_dsp1 = v0_x_dsp1;
+        v0_y_dsp1 = (foot_step_support_frame_offset_(current_step_number - 1, 1)) / 2.0;
+        vT_y_dsp1 = v0_y_dsp1;
+        v0_yaw_dsp1 = foot_step_support_frame_offset_(current_step_number - 1, 5) / 2.0;
+        vT_yaw_dsp1 = v0_yaw_dsp1;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = (foot_step_support_frame_offset_(current_step_number, 0) + foot_step_support_frame_offset_(current_step_number - 1, 0)) / 2.0;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = (foot_step_support_frame_offset_(current_step_number, 1) + foot_step_support_frame_offset_(current_step_number - 1, 1)) / 2.0;
+        v0_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 1, 5) )/ 2.0;
+        vT_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_dsp2 =  vT_x_ssp;
+        vT_x_dsp2 = v0_x_dsp2;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = v0_y_dsp2;
+        v0_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+    }
+    else
+    {   
+        v0_x_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 0) + foot_step_support_frame_offset_(current_step_number - 1, 0)) / 2.0;
+        vT_x_dsp1 = v0_x_dsp1;
+        v0_y_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 1) + foot_step_support_frame_offset_(current_step_number - 1, 1)) / 2.0;
+        vT_y_dsp1 = v0_y_dsp1;
+        v0_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = (foot_step_support_frame_offset_(current_step_number - 1, 0) + foot_step_support_frame_offset_(current_step_number - 0, 0)) / 2.0;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = (foot_step_support_frame_offset_(current_step_number - 1, 1) + foot_step_support_frame_offset_(current_step_number - 0, 1)) / 2.0;
+        v0_yaw_ssp =  (foot_step_support_frame_offset_(current_step_number - 2, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = v0_x_dsp2;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = v0_y_dsp2;
+        v0_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+        vT_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number - 0, 5) + foot_step_support_frame_offset_(current_step_number - 1, 5))/ 2;
+    }
+
+    double lin_interpol = 0.0;
+    for (int i = 0; i < t_total; i++)
+    {
+        if (i < t_dsp1_) 
+        { 
+            // lin_interpol = i / (t_dsp1_);
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_dsp1 + lin_interpol * vT_x_dsp1;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_dsp1 + lin_interpol * vT_y_dsp1;
+            
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0.0, 0.0), min(v0_x_dsp1, vT_x_dsp1), max(v0_x_dsp1, vT_x_dsp1));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0.0, 0.0), min(v0_y_dsp1, vT_y_dsp1), max(v0_y_dsp1, vT_y_dsp1));
+            temp_vx(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0.0, 0.0), min(v0_yaw_dsp1, vT_yaw_dsp1), max(v0_yaw_dsp1, vT_yaw_dsp1));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0., 0.);
+        }
+        else if (i >= t_dsp1_ && i < t_dsp1_ + t_ssp)
+        {
+            // lin_interpol = (i - t_dsp1_) / t_ssp_;
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_ssp + lin_interpol * vT_x_ssp;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_ssp + lin_interpol * vT_y_ssp;
+
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_x_ssp, vT_x_ssp, 0.0, 0.0), min(v0_x_ssp, vT_x_ssp), max(v0_x_ssp, vT_x_ssp));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_y_ssp, vT_y_ssp, 0.0, 0.0), min(v0_y_ssp, vT_y_ssp), max(v0_y_ssp, vT_y_ssp));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_x_ssp, vT_x_ssp, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_y_ssp, vT_y_ssp, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0.0, 0.0), min(v0_yaw_ssp, vT_yaw_ssp), max(v0_yaw_ssp, vT_yaw_ssp));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0., 0.);
+        }
+        else
+        {
+            // lin_interpol = (i - t_dsp1_ - t_ssp_) / t_dsp2_;
+            // temp_px(i) = (1.0 - lin_interpol) * v0_x_dsp2 + lin_interpol * vT_x_dsp2;
+            // temp_py(i) = (1.0 - lin_interpol) * v0_y_dsp2 + lin_interpol * vT_y_dsp2;
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0.0, 0.0), min(v0_x_dsp2, vT_x_dsp2), max(v0_x_dsp2, vT_x_dsp2));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0.0, 0.0), min(v0_y_dsp2, vT_y_dsp2), max(v0_y_dsp2, vT_y_dsp2));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0.0, 0.0), min(v0_yaw_dsp2, vT_yaw_dsp2), max(v0_yaw_dsp2, vT_yaw_dsp2));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0., 0.);
+        }
+        // std::cout << current_step_number << " step's temp_py " << i << " : " << temp_py(i) << std::endl;
+    }
+
+}
+
+
 void CustomController::resetPreviewState(){
     x_preview_.setZero(); y_preview_.setZero(); 
     x_preview_(0) = com_support_init_yaw_(0);
@@ -1569,39 +1915,48 @@ void CustomController::resetPreviewState(){
 
 void CustomController::getComTrajectory()
 {
-    double dt_preview_ = 1.0 / hz_; // : sampling time of preview [s]
-    double NL_preview  = 1.6 * hz_;      // : number of preview horizons
+    if (policy_mode == 0) {
+        double dt_preview_ = 1.0 / hz_; // : sampling time of preview [s]
+        double NL_preview  = 1.6 * hz_;      // : number of preview horizons
 
-    if (is_preview_ctrl_init == true)
-    {
-        Gi_preview_.setZero();
-        Gd_preview_.setZero();
-        Gx_preview_.setZero();
+        if (is_preview_ctrl_init == true)
+        {
+            Gi_preview_.setZero();
+            Gd_preview_.setZero();
+            Gx_preview_.setZero();
 
-        preview_Parameter(dt_preview_, NL_preview, Gi_preview_, Gd_preview_, Gx_preview_, A_preview_, B_preview_, C_preview_);
-        
-        resetPreviewState();
+            preview_Parameter(dt_preview_, NL_preview, Gi_preview_, Gd_preview_, Gx_preview_, A_preview_, B_preview_, C_preview_);
+            
+            resetPreviewState();
 
-        is_preview_ctrl_init = false;
+            is_preview_ctrl_init = false;
 
-        std::cout << "PREVIEW PARAMETERS ARE SUCCESSFULLY INITIALIZED" << std::endl;
+            std::cout << "PREVIEW PARAMETERS ARE SUCCESSFULLY INITIALIZED" << std::endl;
+        }
+
+        previewcontroller(dt_preview_, NL_preview, walking_tick, 
+                        x_preview_, y_preview_, UX_preview_, UY_preview_,
+                        Gi_preview_, Gd_preview_, Gx_preview_, 
+                        A_preview_, B_preview_, C_preview_);
+
+        com_desired_(0) = x_preview_(0);
+        com_desired_(1) = y_preview_(0);
+
+        com_desired_(2) = com_height_;
+        com_desired_dot_(0) = x_preview_(1);
+        com_desired_dot_(1) = y_preview_(1);
+        com_desired_dot_(2) = 0.;
+
+        if (!ideal_preview) windupPreview();
     }
-
-    previewcontroller(dt_preview_, NL_preview, walking_tick, 
-                      x_preview_, y_preview_, UX_preview_, UY_preview_,
-                      Gi_preview_, Gd_preview_, Gx_preview_, 
-                      A_preview_, B_preview_, C_preview_);
-
-    com_desired_(0) = x_preview_(0);
-    com_desired_(1) = y_preview_(0);
-
-    com_desired_(2) = com_height_;
-    com_desired_dot_(0) = x_preview_(1);
-    com_desired_dot_(1) = y_preview_(1);
-    com_desired_dot_(2) = 0.;
-
-    if (!ideal_preview) windupPreview();
-
+    else if (policy_mode == 1) {
+        com_desired_(0) = ref_zmp_(walking_tick, 0);
+        com_desired_(1) = ref_zmp_(walking_tick, 1);
+        com_desired_(2) = com_height_;
+        com_desired_dot_(0) = ref_com_xy_vel_(walking_tick, 0);
+        com_desired_dot_(1) = ref_com_xy_vel_(walking_tick, 1);
+        com_desired_dot_(2) = 0.;
+    }
     
 }
 
@@ -1859,6 +2214,8 @@ void CustomController::previewcontroller(double dt, int NL, int tick,
 
 void CustomController::getFootTrajectory() 
 {
+    if (policy_mode == 2)
+        return;
     Eigen::Vector6d target_swing_foot; target_swing_foot.setZero();
     target_swing_foot = foot_step_support_frame_.row(0).transpose().segment(0,6);
     Eigen::Isometry3d &support_foot_traj           = (is_lfoot_support == true && is_rfoot_support == false) ? lfoot_trajectory_support_ : rfoot_trajectory_support_;
@@ -2033,7 +2390,8 @@ void CustomController::computeIkControl(const Eigen::Isometry3d &float_trunk_tra
 
 
 void CustomController::getTargetState(){
-
+    if (policy_mode == 2)
+        return;
     target_com_state_stance_frame_.segment(0, 3) = com_desired_;
     Eigen::Quaterniond com_quat(DyrosMath::rotateWithZ(ref_com_yaw_(walking_tick+1)));
     target_com_state_stance_frame_(3) = com_quat.x();
