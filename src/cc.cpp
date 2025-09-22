@@ -11,6 +11,7 @@ CustomController::CustomController(RobotData &rd)
     ControlVal_.setZero();
     nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
     nh_.getParam("/tocabi_cc/policy_mode", policy_mode); // 0 for ral, 1 for heuri, 2 for intern
+    nh_.getParam("/tocabi_cc/ctrl_mode", ctrl_mode); // 0 for Joystick Mode 1 for Stepping Stone, 2 for Random Command, 3 for Data Collection
 
     if (is_write_file_)
     {
@@ -21,7 +22,12 @@ CustomController::CustomController(RobotData &rd)
         else
         {
             writeFile.open(workspace_dir_ + "result/data.csv", std::ofstream::out);
-            evalFile.open(workspace_dir_ + "result/eval_data.csv", std::ofstream::out);
+            if (policy_mode == 0)
+                evalFile.open(workspace_dir_ + "result/eval_data_ral.csv", std::ofstream::out);
+            else if (policy_mode == 1)
+                evalFile.open(workspace_dir_ + "result/eval_data_heu.csv", std::ofstream::out);
+            else if (policy_mode == 2)
+                evalFile.open(workspace_dir_ + "result/eval_data_int.csv", std::ofstream::out);
         }
         writeFile << std::fixed << std::setprecision(8);
         evalFile << std::fixed << std::setprecision(8);
@@ -31,7 +37,9 @@ CustomController::CustomController(RobotData &rd)
     loadNetwork();
     std::cout << "Load network end\n" << std::endl;
 
-    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &CustomController::joyCallback, this);
+    joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy_wh", 10, &CustomController::joyCallback, this);
+    aruco_sub_ = nh_.subscribe<geometry_msgs::PoseArray>("aruco_relative/poses", 10, &CustomController::ArUcoPoseCallback, this);
+    marker_ids_sub_ = nh_.subscribe<std_msgs::Int32MultiArray>("aruco_relative/ids", 10, &CustomController::ArucoIDCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -205,8 +213,11 @@ void CustomController::initVariable()
     {
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
     }
-
-    if (ctrl_mode){
+    aruco_pos_.resize(6, Eigen::Vector3d::Zero());
+    aruco_quat_.resize(6, Eigen::Quaterniond::Identity());
+    if (ctrl_mode == 1) {
+        planned_step_number = 12;
+        // planned_step_number = 6;
         foothold_x_planned.setZero(planned_step_number);
         foothold_y_planned.setZero(planned_step_number);
         foothold_yaw_planned.setZero(planned_step_number);
@@ -215,7 +226,18 @@ void CustomController::initVariable()
         foot_height_planned.setZero(planned_step_number);
         lfoot_global_state.setZero(3);
         rfoot_global_state.setZero(3);
-        loadCommand(cur_path + "commands.txt");
+        loadCommand(cur_path + "commands_stones.txt");
+    }
+    else if (ctrl_mode == 2){
+        foothold_x_planned.setZero(planned_step_number);
+        foothold_y_planned.setZero(planned_step_number);
+        foothold_yaw_planned.setZero(planned_step_number);
+        t_dsp_planned.setZero(planned_step_number);
+        t_ssp_planned.setZero(planned_step_number);
+        foot_height_planned.setZero(planned_step_number);
+        lfoot_global_state.setZero(3);
+        rfoot_global_state.setZero(3);
+        loadCommand(cur_path + "commands_2.txt");
     }
 }
 
@@ -378,7 +400,7 @@ void CustomController::processObservation() // [linvel, angvel, proj_grav, comma
         state_cur_[data_idx++] = -sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
         state_cur_[data_idx++] = step_length_x_(0);
         state_cur_[data_idx++] = step_length_y_(0);
-        state_cur_[data_idx++] = 0.48;
+        state_cur_[data_idx++] = 0.45;
         Eigen::Quaterniond support_foot_quat; 
         support_foot_quat = Eigen::Quaterniond(supportfoot_global_init_yaw_.linear());
         double error = q.w() * support_foot_quat.w() + q.x() * support_foot_quat.x() + q.y() * support_foot_quat.y() + q.z() * support_foot_quat.z();
@@ -676,12 +698,57 @@ void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
     // std::cout << "Rcommand_step_yaw_ :" << Rcommand_step_yaw_ << std::endl;
 }
 
+void CustomController::ArUcoPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+{
+    if (marker_ids_.size() == msg->poses.size())
+    {
+        for (size_t i = 0; i < msg->poses.size(); i++)
+        {
+            if (marker_ids_[i] > 0 && marker_ids_[i] <= 6) // Assuming marker IDs are between 1 and 6
+            {
+                aruco_pos_[marker_ids_[i]-1](0) = msg->poses[i].position.x;
+                aruco_pos_[marker_ids_[i]-1](1) = msg->poses[i].position.y;
+                aruco_pos_[marker_ids_[i]-1](2) = msg->poses[i].position.z;
+                aruco_quat_[marker_ids_[i]-1].x() = msg->poses[i].orientation.x;
+                aruco_quat_[marker_ids_[i]-1].y() = msg->poses[i].orientation.y;
+                aruco_quat_[marker_ids_[i]-1].z() = msg->poses[i].orientation.z;
+                aruco_quat_[marker_ids_[i]-1].w() = msg->poses[i].orientation.w;
+            }
+        }
+    }
+}
+
+void CustomController::ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg)
+{
+    marker_ids_.clear();
+    for (size_t i = 0; i < msg->data.size(); i++)
+    {
+        marker_ids_.push_back(msg->data[i]);
+    }
+}
+
 
 void CustomController::computeSlow()
 
 {
     copyRobotData(rd_);
     if (rd_cc_.tc_.mode == 7)
+    {            
+        if (ctrl_mode == 4) {
+            string cur_path = workspace_dir_;
+            planned_step_number = 12;
+            foothold_x_planned.setZero(planned_step_number);
+            foothold_y_planned.setZero(planned_step_number);
+            foothold_yaw_planned.setZero(planned_step_number);
+            t_dsp_planned.setZero(planned_step_number);
+            t_ssp_planned.setZero(planned_step_number);
+            foot_height_planned.setZero(planned_step_number);
+            lfoot_global_state.setZero(3);
+            rfoot_global_state.setZero(3);
+            loadCommand_QR(cur_path + "commands_stones_QR.txt");
+        }
+    }
+    else if (rd_cc_.tc_.mode == 8)
     {
         if (rd_cc_.tc_init)
         {
@@ -775,6 +842,7 @@ void CustomController::computeSlow()
                 // writeFile << q_leg_desired_.transpose() << "\t";
                 // writeFile << ref_zmp_(walking_tick,0) << "\t";
                 // writeFile << ref_zmp_(walking_tick, 1) << "\t";
+                writeFile << torque_rl_.transpose() << "\t";
                 writeFile << std::endl;
                 time_write_pre_ = rd_cc_.control_time_us_;
             }
@@ -827,51 +895,104 @@ void CustomController::copyRobotData(RobotData &rd_l)
 }
 
 void CustomController::loadCommand(const std::string &command_file)
+{
+    std::ifstream file(command_file);
+    if (!file)
     {
-        std::ifstream file(command_file);
-        if (!file)
-        {
-        throw std::runtime_error("Cannot open command file: " + command_file);
-        }
+    throw std::runtime_error("Cannot open command file: " + command_file);
+    }
 
-        std::string line;
-        while (std::getline(file, line))
-        {
-        if (line.empty())
-        continue;
+    std::string line;
+    while (std::getline(file, line))
+    {
+    if (line.empty())
+    continue;
 
-        std::istringstream iss(line);
-        std::string key;
-        iss >> key;
+    std::istringstream iss(line);
+    std::string key;
+    iss >> key;
 
-        VectorXd vec;
-        vec.setZero(planned_step_number);
-        for (int i = 0; i < planned_step_number; i++)
-        {
-        if(!(iss >> vec(i)))
-        {
-        throw std::runtime_error("Error parsing values for key: " + key);
-        }
-        }
+    VectorXd vec;
+    vec.setZero(planned_step_number);
+    for (int i = 0; i < planned_step_number; i++)
+    {
+    if(!(iss >> vec(i)))
+    {
+    throw std::runtime_error("Error parsing values for key: " + key);
+    }
+    }
 
-        if (key == "foothold_x_planned")
-        foothold_x_planned = vec;
-        else if (key == "foothold_y_planned")
-        foothold_y_planned = vec;
-        else if (key == "foothold_yaw_planned")
-        foothold_yaw_planned = vec;
-        else if (key == "t_dsp_planned")
-        t_dsp_planned = vec;
-        else if (key == "t_ssp_planned")
-        t_ssp_planned = vec;
-        else if (key == "foot_height_planned")
-        foot_height_planned = vec;
-        else
-        std::cerr << "Warning: Unknown key '" << key << "' in file " << command_file << std::endl;
-        }
+    if (key == "foothold_x_planned")
+    foothold_x_planned = vec;
+    else if (key == "foothold_y_planned")
+    foothold_y_planned = vec;
+    else if (key == "foothold_yaw_planned")
+    foothold_yaw_planned = vec;
+    else if (key == "t_dsp_planned")
+    t_dsp_planned = vec;
+    else if (key == "t_ssp_planned")
+    t_ssp_planned = vec;
+    else if (key == "foot_height_planned")
+    foot_height_planned = vec;
+    else
+    std::cerr << "Warning: Unknown key '" << key << "' in file " << command_file << std::endl;
+    }
 
     file.close();
+}
+
+
+void CustomController::loadCommand_QR(const std::string &command_file)
+{
+    std::ifstream file(command_file);
+    if (!file)
+    {
+    throw std::runtime_error("Cannot open command file: " + command_file);
     }
+
+    std::string line;
+    while (std::getline(file, line))
+    {
+    if (line.empty())
+    continue;
+
+    std::istringstream iss(line);
+    std::string key;
+    iss >> key;
+
+    VectorXd vec;
+    vec.setZero(planned_step_number);
+    for (int i = 0; i < planned_step_number; i++)
+    {
+    if(!(iss >> vec(i)))
+    {
+    throw std::runtime_error("Error parsing values for key: " + key);
+    }
+    }
+
+    // if (key == "foothold_x_planned")
+    // foothold_x_planned = vec;
+    // else if (key == "foothold_y_planned")
+    // foothold_y_planned = vec;
+    // else if (key == "foothold_yaw_planned")
+    // foothold_yaw_planned = vec;
+    for (int i=0; i<planned_step_number; i++){
+        foothold_x_planned(i) = aruco_pos_[i](1);
+        foothold_y_planned(i) = -aruco_pos_[i](0);
+        foothold_yaw_planned(i) = DyrosMath::rot2Euler(aruco_quat_[i].toRotationMatrix())(2);
+    }
+    if (key == "t_dsp_planned")
+    t_dsp_planned = vec;
+    else if (key == "t_ssp_planned")
+    t_ssp_planned = vec;
+    else if (key == "foot_height_planned")
+    foot_height_planned = vec;
+    else
+    std::cerr << "Warning: Unknown key '" << key << "' in file " << command_file << std::endl;
+    }
+
+    file.close();
+}
 
 void CustomController::updateInitialState()
 {
@@ -940,8 +1061,10 @@ void CustomController::updateFootstepCommand(){
         rfoot_global_state.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
         lfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
         rfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
-        lfoot_global_state(0) += 0.03;
-        rfoot_global_state(0) += 0.03;
+        if (policy_mode == 0) {
+            lfoot_global_state(0) += 0.03;
+            rfoot_global_state(0) += 0.03;
+        }
         for (int step = 0; step < number_of_foot_step; step++){
             if (step == 0) phase_indicator_(step) = first_stance_foot_;
             else phase_indicator_(step) = 1-phase_indicator_(step-1);
@@ -955,15 +1078,14 @@ void CustomController::updateFootstepCommand(){
             t_ssp_(step) = std::floor((phase_indicator_(step)*Lcommand_t_ssp_ + (1-phase_indicator_(step))*Rcommand_t_ssp_ )* hz_);
             t_ssp_seconds(step) = phase_indicator_(step)*Lcommand_t_ssp_ + (1-phase_indicator_(step))*Rcommand_t_ssp_;
             t_total_(step) = 2*t_dsp_(step) + t_ssp_(step);
-
-            
         }
 
         switch (ctrl_mode)
         {
         case 0:
             break;
-        case 1: // Stepping stone
+        case 1:
+        case 4: // Stepping stone
         {
             for (int step = 0; step < number_of_foot_step; step++){
 
@@ -1105,6 +1227,7 @@ void CustomController::updateFootstepCommand(){
         case 0:
             break;
         case 1:
+        case 4: // Stepping stone
         {
             if (current_step_number < planned_step_number){
 
@@ -1587,6 +1710,7 @@ void CustomController::comHeuristicGenerator(const unsigned int norm_size)
     {   
         // onestepCoMHeuri(i, temp_px, temp_py, temp_vx, temp_vy, temp_yaw, temp_yawvel); // save 1-step zmp into temp px, py
         onestepCoMHeuri2(i, temp_px, temp_py, temp_vx, temp_vy, temp_yaw, temp_yawvel); // save 1-step zmp into temp px, py
+        // onestepCoMHeuri3(i, temp_px, temp_py, temp_vx, temp_vy, temp_yaw, temp_yawvel); // save 1-step zmp into temp px, py
         ref_zmp_.block(index, 0, t_total_(i), 1) = temp_px; 
         ref_zmp_.block(index, 1, t_total_(i), 1) = temp_py;
         ref_com_xy_vel_.block(index, 0, t_total_(i), 1) = temp_vx;
@@ -1901,6 +2025,112 @@ void CustomController::onestepCoMHeuri2(unsigned int current_step_number, Eigen:
 
 }
 
+void CustomController::onestepCoMHeuri3(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel) // CoM Yaw as well.
+{
+    temp_px.setZero(t_total_(current_step_number));  
+    temp_py.setZero(t_total_(current_step_number));
+    temp_vx.setZero(t_total_(current_step_number));
+    temp_vy.setZero(t_total_(current_step_number));
+    temp_yaw.setZero(t_total_(current_step_number));
+    temp_yawvel.setZero(t_total_(current_step_number));
+
+    double v0_x_dsp1 = 0.0; double v0_y_dsp1 = 0.0;
+    double vT_x_dsp1 = 0.0; double vT_y_dsp1 = 0.0;
+    double v0_yaw_dsp1 = 0.0; double vT_yaw_dsp1 = 0.0;
+    double v0_x_ssp  = 0.0; double v0_y_ssp = 0.0;
+    double vT_x_ssp  = 0.0; double vT_y_ssp = 0.0;
+    double v0_yaw_ssp  = 0.0; double vT_yaw_ssp = 0.0;
+    double v0_x_dsp2 = 0.0; double v0_y_dsp2 = 0.0;
+    double vT_x_dsp2 = 0.0; double vT_y_dsp2 = 0.0;
+    double v0_yaw_dsp2 = 0.0; double vT_yaw_dsp2 = 0.0;
+
+    double t_dsp1_ = t_dsp_(current_step_number);
+    double t_dsp2_ = t_dsp_(current_step_number);
+    double t_ssp = t_ssp_(current_step_number);
+    double t_total = t_total_(current_step_number);    
+    
+    //TODO CoM Yaw implement
+    if (current_step_number == 0)
+    {
+        v0_x_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(0) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(0))/2;
+        vT_x_dsp1 = v0_x_dsp1 / 2.0;
+        v0_y_dsp1 = (phase_indicator_(0)*lfoot_support_init_yaw_.translation()(1) + (1-phase_indicator_(0))*rfoot_support_init_yaw_.translation()(1))/2;
+        vT_y_dsp1 = v0_y_dsp1 / 2.0;
+        v0_yaw_dsp1 = DyrosMath::rot2Euler(phase_indicator_(0)*lfoot_support_init_yaw_.linear() + (1-phase_indicator_(0))*rfoot_support_init_yaw_.linear())(2)/2;
+        vT_yaw_dsp1 = v0_yaw_dsp1;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 0)) / 4.0;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = (foot_step_support_frame_offset_(current_step_number - 0, 1)) / 4.0;
+        v0_yaw_ssp =  vT_yaw_dsp1;
+        vT_yaw_ssp = foot_step_support_frame_offset_(current_step_number - 0, 5) / 2.0;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = vT_x_ssp * 2.0;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = vT_y_ssp * 2.0;
+        v0_yaw_dsp2 = vT_yaw_ssp;
+        vT_yaw_dsp2 = v0_yaw_dsp2;
+    }
+    else
+    {   
+        v0_x_dsp1 = (foot_step_support_frame_offset_(current_step_number, 0) + foot_step_support_frame_offset_(current_step_number, 0)) / 2.0;
+        vT_x_dsp1 = v0_x_dsp1;
+        v0_y_dsp1 = (foot_step_support_frame_offset_(current_step_number, 1) + foot_step_support_frame_offset_(current_step_number, 1)) / 2.0;
+        vT_y_dsp1 = v0_y_dsp1;
+        v0_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+        vT_yaw_dsp1 = (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+
+        v0_x_ssp = vT_x_dsp1;
+        vT_x_ssp = (foot_step_support_frame_offset_(current_step_number, 0) + foot_step_support_frame_offset_(current_step_number, 0)) / 2.0;
+        v0_y_ssp = vT_y_dsp1;
+        vT_y_ssp = (foot_step_support_frame_offset_(current_step_number, 1) + foot_step_support_frame_offset_(current_step_number, 1)) / 2.0;
+        v0_yaw_ssp =  (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+        vT_yaw_ssp = (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+
+        v0_x_dsp2 = vT_x_ssp;
+        vT_x_dsp2 = v0_x_dsp2;
+        v0_y_dsp2 = vT_y_ssp;
+        vT_y_dsp2 = v0_y_dsp2;
+        v0_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+        vT_yaw_dsp2 = (foot_step_support_frame_offset_(current_step_number, 5) + foot_step_support_frame_offset_(current_step_number, 5))/ 2;
+    }
+
+    double lin_interpol = 0.0;
+    for (int i = 0; i < t_total; i++)
+    {
+        if (i < t_dsp1_) 
+        { 
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0.0, 0.0), min(v0_x_dsp1, vT_x_dsp1), max(v0_x_dsp1, vT_x_dsp1));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0.0, 0.0), min(v0_y_dsp1, vT_y_dsp1), max(v0_y_dsp1, vT_y_dsp1));
+            temp_vx(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_x_dsp1, vT_x_dsp1, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_y_dsp1, vT_y_dsp1, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0.0, 0.0), min(v0_yaw_dsp1, vT_yaw_dsp1), max(v0_yaw_dsp1, vT_yaw_dsp1));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, 0.0, t_dsp1_, v0_yaw_dsp1, vT_yaw_dsp1, 0., 0.);
+        }
+        else if (i >= t_dsp1_ && i < t_dsp1_ + t_ssp)
+        {
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_x_ssp, vT_x_ssp, 0.0, 0.0), min(v0_x_ssp, vT_x_ssp), max(v0_x_ssp, vT_x_ssp));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_y_ssp, vT_y_ssp, 0.0, 0.0), min(v0_y_ssp, vT_y_ssp), max(v0_y_ssp, vT_y_ssp));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_x_ssp, vT_x_ssp, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_y_ssp, vT_y_ssp, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_, t_dsp1_ + t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0.0, 0.0), min(v0_yaw_ssp, vT_yaw_ssp), max(v0_yaw_ssp, vT_yaw_ssp));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_, t_dsp1_+t_ssp, v0_yaw_ssp, vT_yaw_ssp, 0., 0.);
+        }
+        else
+        {
+            temp_px(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0.0, 0.0), min(v0_x_dsp2, vT_x_dsp2), max(v0_x_dsp2, vT_x_dsp2));
+            temp_py(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0.0, 0.0), min(v0_y_dsp2, vT_y_dsp2), max(v0_y_dsp2, vT_y_dsp2));
+            temp_vx(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_x_dsp2, vT_x_dsp2, 0., 0.);
+            temp_vy(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_y_dsp2, vT_y_dsp2, 0., 0.);
+            temp_yaw(i) = DyrosMath::minmax_cut(DyrosMath::cubic(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0.0, 0.0), min(v0_yaw_dsp2, vT_yaw_dsp2), max(v0_yaw_dsp2, vT_yaw_dsp2));
+            temp_yawvel(i) = DyrosMath::cubicDot(i, t_dsp1_ + t_ssp, t_total, v0_yaw_dsp2, vT_yaw_dsp2, 0., 0.);
+        }
+        // std::cout << current_step_number << " step's temp_py " << i << " : " << temp_py(i) << std::endl;
+    }
+
+}
 
 void CustomController::resetPreviewState(){
     x_preview_.setZero(); y_preview_.setZero(); 

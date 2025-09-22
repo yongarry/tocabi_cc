@@ -5,6 +5,8 @@
 
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
+#include <std_msgs/Int32MultiArray.h>
+#include <geometry_msgs/PoseArray.h>
 
 #include "onnxruntime_cxx_api.h"
 
@@ -111,6 +113,15 @@ public:
     void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
     ros::Subscriber joy_sub_;
     void loadCommand(const std::string &command_file);
+    void loadCommand_QR(const std::string &command_file);
+    ros::Subscriber aruco_sub_, marker_ids_sub_;
+    void ArUcoPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg);
+    void ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+    std::vector<int> marker_ids_;
+    std::vector<Eigen::Vector3d> aruco_pos_;
+    std::vector<Eigen::Quaterniond> aruco_quat_;
+    std::vector<Eigen::Isometry3d> stepcmd_pelv_, stepcmd_global_;
+
 
 
     // BIPED WALKING PARAMETER
@@ -417,6 +428,7 @@ public:
     void comHeuristicGenerator(const unsigned int norm_size);
     void onestepCoMHeuri(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel); // CoM Yaw as well.
     void onestepCoMHeuri2(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel); // CoM Yaw as well.
+    void onestepCoMHeuri3(unsigned int current_step_number, Eigen::VectorXd &temp_px, Eigen::VectorXd &temp_py, Eigen::VectorXd &temp_vx, Eigen::VectorXd &temp_vy, Eigen::VectorXd &temp_yaw, Eigen::VectorXd &temp_yawvel); // CoM Yaw as well.
 
     void getComTrajectory(); 
     void previewcontroller(double dt, int NL, int tick, 
