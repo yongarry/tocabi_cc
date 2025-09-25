@@ -18,6 +18,12 @@ CustomController::CustomController(RobotData &rd)
         if (is_on_robot_)
         {
             writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/data.csv", std::ofstream::out);
+            if (policy_mode == 0)
+                evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_ral.csv", std::ofstream::out);
+            else if (policy_mode == 1)
+                evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_heu.csv", std::ofstream::out);
+            else if (policy_mode == 2)
+                evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_int.csv", std::ofstream::out);
         }
         else
         {
@@ -38,8 +44,8 @@ CustomController::CustomController(RobotData &rd)
     std::cout << "Load network end\n" << std::endl;
 
     joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy_wh", 10, &CustomController::joyCallback, this);
-    aruco_sub_ = nh_.subscribe<geometry_msgs::PoseArray>("aruco_relative/poses", 10, &CustomController::ArUcoPoseCallback, this);
-    marker_ids_sub_ = nh_.subscribe<std_msgs::Int32MultiArray>("aruco_relative/ids", 10, &CustomController::ArucoIDCallback, this);
+    aruco_sub_ = nh_.subscribe<std_msgs::Float64MultiArray>("aruco_relative/poses", 10, &CustomController::ArUcoPoseCallback, this);
+    // marker_ids_sub_ = nh_.subscribe<std_msgs::Int32MultiArray>("aruco_relative/ids", 10, &CustomController::ArucoIDCallback, this);
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -213,8 +219,7 @@ void CustomController::initVariable()
     {
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
     }
-    aruco_pos_.resize(6, Eigen::Vector3d::Zero());
-    aruco_quat_.resize(6, Eigen::Quaterniond::Identity());
+    aruco_pos_.resize(12, Eigen::Vector3d::Zero());
     if (ctrl_mode == 1) {
         planned_step_number = 12;
         // planned_step_number = 6;
@@ -698,34 +703,24 @@ void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
     // std::cout << "Rcommand_step_yaw_ :" << Rcommand_step_yaw_ << std::endl;
 }
 
-void CustomController::ArUcoPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+void CustomController::ArUcoPoseCallback(const std_msgs::Float64MultiArray::ConstPtr& msg)
 {
-    if (marker_ids_.size() == msg->poses.size())
+    for (size_t i = 0; i < 12; i ++)
     {
-        for (size_t i = 0; i < msg->poses.size(); i++)
-        {
-            if (marker_ids_[i] > 0 && marker_ids_[i] <= 6) // Assuming marker IDs are between 1 and 6
-            {
-                aruco_pos_[marker_ids_[i]-1](0) = msg->poses[i].position.x;
-                aruco_pos_[marker_ids_[i]-1](1) = msg->poses[i].position.y;
-                aruco_pos_[marker_ids_[i]-1](2) = msg->poses[i].position.z;
-                aruco_quat_[marker_ids_[i]-1].x() = msg->poses[i].orientation.x;
-                aruco_quat_[marker_ids_[i]-1].y() = msg->poses[i].orientation.y;
-                aruco_quat_[marker_ids_[i]-1].z() = msg->poses[i].orientation.z;
-                aruco_quat_[marker_ids_[i]-1].w() = msg->poses[i].orientation.w;
-            }
-        }
+        aruco_pos_[i](0) = msg->data[3*i];
+        aruco_pos_[i](1) = msg->data[3*i+1];
+        aruco_pos_[i](2) = msg->data[3*i+2];
     }
 }
 
-void CustomController::ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg)
-{
-    marker_ids_.clear();
-    for (size_t i = 0; i < msg->data.size(); i++)
-    {
-        marker_ids_.push_back(msg->data[i]);
-    }
-}
+// void CustomController::ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg)
+// {
+//     marker_ids_.clear();
+//     for (size_t i = 0; i < msg->data.size(); i++)
+//     {
+//         marker_ids_.push_back(msg->data[i]);
+//     }
+// }
 
 
 void CustomController::computeSlow()
@@ -735,17 +730,22 @@ void CustomController::computeSlow()
     if (rd_cc_.tc_.mode == 7)
     {            
         if (ctrl_mode == 4) {
-            string cur_path = workspace_dir_;
-            planned_step_number = 12;
-            foothold_x_planned.setZero(planned_step_number);
-            foothold_y_planned.setZero(planned_step_number);
-            foothold_yaw_planned.setZero(planned_step_number);
-            t_dsp_planned.setZero(planned_step_number);
-            t_ssp_planned.setZero(planned_step_number);
-            foot_height_planned.setZero(planned_step_number);
-            lfoot_global_state.setZero(3);
-            rfoot_global_state.setZero(3);
-            loadCommand_QR(cur_path + "commands_stones_QR.txt");
+            if (load_qr_only_first){
+                load_qr_only_first = false;
+                string cur_path = workspace_dir_;
+                if (is_on_robot_)
+                    cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/";
+                planned_step_number = 6;
+                foothold_x_planned.setZero(planned_step_number);
+                foothold_y_planned.setZero(planned_step_number);
+                foothold_yaw_planned.setZero(planned_step_number);
+                t_dsp_planned.setZero(planned_step_number);
+                t_ssp_planned.setZero(planned_step_number);
+                foot_height_planned.setZero(planned_step_number);
+                lfoot_global_state.setZero(3);
+                rfoot_global_state.setZero(3);
+                loadCommand_QR(cur_path + "commands_stones_QR.txt");
+            }
         }
     }
     else if (rd_cc_.tc_.mode == 8)
@@ -977,9 +977,10 @@ void CustomController::loadCommand_QR(const std::string &command_file)
     // else if (key == "foothold_yaw_planned")
     // foothold_yaw_planned = vec;
     for (int i=0; i<planned_step_number; i++){
-        foothold_x_planned(i) = aruco_pos_[i](1);
-        foothold_y_planned(i) = -aruco_pos_[i](0);
-        foothold_yaw_planned(i) = DyrosMath::rot2Euler(aruco_quat_[i].toRotationMatrix())(2);
+        foothold_x_planned(i) = aruco_pos_[i](0) + 0.05;
+        foothold_y_planned(i) = aruco_pos_[i](1) - 0.1025;
+        // foothold_yaw_planned(i) = aruco_pos_[i](2);
+        foothold_yaw_planned(i) = 0.0;
     }
     if (key == "t_dsp_planned")
     t_dsp_planned = vec;
@@ -992,6 +993,11 @@ void CustomController::loadCommand_QR(const std::string &command_file)
     }
 
     file.close();
+
+    cout << "foothold_x: " << foothold_x_planned.transpose() << endl;
+    cout << "foothold_y: " << foothold_y_planned.transpose() << endl;
+    cout << "foothold_yaw: " << foothold_yaw_planned.transpose() << endl;
+
 }
 
 void CustomController::updateInitialState()

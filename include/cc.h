@@ -6,6 +6,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
 #include <std_msgs/Int32MultiArray.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseArray.h>
 
 #include "onnxruntime_cxx_api.h"
@@ -80,7 +81,7 @@ public:
 
     float phase_ = 0.0;
 
-    bool is_on_robot_ = false;
+    bool is_on_robot_ = true;
     bool is_write_file_ = true;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
@@ -115,11 +116,12 @@ public:
     void loadCommand(const std::string &command_file);
     void loadCommand_QR(const std::string &command_file);
     ros::Subscriber aruco_sub_, marker_ids_sub_;
-    void ArUcoPoseCallback(const geometry_msgs::PoseArray::ConstPtr& msg);
-    void ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+    void ArUcoPoseCallback(const std_msgs::Float64MultiArray::ConstPtr& msg);
+    // void ArucoIDCallback(const std_msgs::Int32MultiArray::ConstPtr& msg);
     std::vector<int> marker_ids_;
+    bool load_qr_only_first = true;
     std::vector<Eigen::Vector3d> aruco_pos_;
-    std::vector<Eigen::Quaterniond> aruco_quat_;
+    // std::vector<Eigen::Quaterniond> aruco_quat_;
     std::vector<Eigen::Isometry3d> stepcmd_pelv_, stepcmd_global_;
 
 
