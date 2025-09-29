@@ -60,6 +60,7 @@ public:
     static const int num_actuator_action = 12;
     int num_cur_state = 65;
     static const int num_cur_state_intern = 51;
+    float swing_ratio = 0.428;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;
@@ -81,7 +82,7 @@ public:
 
     float phase_ = 0.0;
 
-    bool is_on_robot_ = true;
+    bool is_on_robot_ = false;
     bool is_write_file_ = true;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
@@ -148,7 +149,7 @@ public:
     double t_double1_;
     double t_double2_;
     double zmp_offset = 0.02;
-    double zmp_offset_x = 0.0;
+    double zmp_offset_x = 0.03;
 
 
 
@@ -413,6 +414,7 @@ public:
     // PREVIEW CONTROL
     void updateInitialState();
     void updateFootstepCommand();
+    void updateFootstepCommand_intern();
     void getRobotState();
     void walkingStateMachine();
     void calculateFootStepTotal();
