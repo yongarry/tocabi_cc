@@ -24,6 +24,8 @@ CustomController::CustomController(RobotData &rd)
                 evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_heu.csv", std::ofstream::out);
             else if (policy_mode == 2)
                 evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_int.csv", std::ofstream::out);
+            else if (policy_mode == 3)
+                evalFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/eval_data_pc.csv", std::ofstream::out);
         }
         else
         {
@@ -34,6 +36,8 @@ CustomController::CustomController(RobotData &rd)
                 evalFile.open(workspace_dir_ + "result/eval_data_heu.csv", std::ofstream::out);
             else if (policy_mode == 2)
                 evalFile.open(workspace_dir_ + "result/eval_data_int.csv", std::ofstream::out);
+            else if (policy_mode == 3)
+                evalFile.open(workspace_dir_ + "result/eval_data_pc.csv", std::ofstream::out);
         }
         writeFile << std::fixed << std::setprecision(8);
         evalFile << std::fixed << std::setprecision(8);
@@ -779,11 +783,13 @@ void CustomController::computeSlow()
             getTargetState();
             processNoise();
             processBias();
-            processObservation();
-            for (int i = 0; i < num_state_skip*num_state_hist; i++) 
-            {
-                // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
-                std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*i);
+            if (policy_mode == 0 || policy_mode == 1 || policy_mode == 2){
+                processObservation();
+                for (int i = 0; i < num_state_skip*num_state_hist; i++) 
+                {
+                    // state_buffer_.block(num_cur_state*i, 0, num_cur_state, 1) = state_cur_;
+                    std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*i);
+                }
             }
         }
         processNoise();
@@ -802,10 +808,10 @@ void CustomController::computeSlow()
             getComTrajectory(); 
             getFootTrajectory();
             getTargetState();
-
-            processObservation();
-            feedforwardPolicy();
-            
+            if (policy_mode == 0 || policy_mode == 1 || policy_mode == 2){
+                processObservation();
+                feedforwardPolicy();
+            }
             updateNextStepTime();
             // End time measurement
             // auto end_time = std::chrono::high_resolution_clock::now();
@@ -815,16 +821,16 @@ void CustomController::computeSlow()
             // std::cout << "processObservation and feedforwardPolicy took " << duration << " us" << std::endl;
 
             action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*5/hz_, 0.0, 5/hz_);
-            if (value_ < 10.0)
-            {
-                if (stop_by_value_thres_ == false)
-                {
-                    stop_by_value_thres_ = true;
-                    stop_start_time_ = rd_cc_.control_time_us_;
-                    q_stop_ = q_noise_;
-                    std::cout << "Stop by Value Function : " << walking_tick << ", Value : " << value_ << std::endl;
-                }
-            }
+            // if (value_ < 10.0)
+            // {
+            //     if (stop_by_value_thres_ == false)
+            //     {
+            //         stop_by_value_thres_ = true;
+            //         stop_start_time_ = rd_cc_.control_time_us_;
+            //         q_stop_ = q_noise_;
+            //         std::cout << "Stop by Value Function : " << walking_tick << ", Value : " << value_ << std::endl;
+            //     }
+            // }
             if (is_write_file_)
             {
                 // writeFile << (rd_cc_.control_time_us_ - time_inference_pre_)/1e6 << "\t";
@@ -858,7 +864,10 @@ void CustomController::computeSlow()
 
         for (int i = 0; i < num_actuator_action; i++)
         {
-            torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -1., 1.) *torque_bound_(i) ;
+            if (policy_mode == 3) //preview control
+                torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i)*q_vel_noise_(i);
+            else // ral, heuri, intern
+                torque_rl_(i) = DyrosMath::minmax_cut(rl_action_(i), -1., 1.) *torque_bound_(i) ;
         }
 
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
@@ -1000,7 +1009,7 @@ void CustomController::loadCommand_QR(const std::string &command_file)
         // // foothold_yaw_planned(i) = aruco_pos_[i](2);
         foothold_yaw_planned(i) = 0.0;
         // foothold_x_planned(i) += 0.05;
-        // foothold_y_planned(i) -= 0.1025;
+        // foothold_y_planned(i) -= 0.105;
         // foothold_yaw_planned(i) = 0.0;
     }
 
@@ -1079,7 +1088,7 @@ void CustomController::updateFootstepCommand(){
         rfoot_global_state.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
         lfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
         rfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
-        if (policy_mode == 0) {
+        if (policy_mode == 0 || policy_mode == 3) {
             lfoot_global_state(0) += 0.03;
             rfoot_global_state(0) += 0.03;
         }
@@ -1973,7 +1982,7 @@ void CustomController::getZmpTrajectory()
     norm_size = 4.0*hz_ ; // compute zmp over the three planned steps
     addZmpOffset(); 
 
-    if (policy_mode == 0)
+    if (policy_mode == 0 || policy_mode == 3)
         zmpGenerator(norm_size);
     else if (policy_mode == 1)
         comHeuristicGenerator(norm_size);
@@ -2625,7 +2634,7 @@ void CustomController::resetPreviewState(){
 
 void CustomController::getComTrajectory()
 {
-    if (policy_mode == 0) {
+    if (policy_mode == 0 || policy_mode == 3) {
         double dt_preview_ = 1.0 / hz_; // : sampling time of preview [s]
         double NL_preview  = 1.6 * hz_;      // : number of preview horizons
 
