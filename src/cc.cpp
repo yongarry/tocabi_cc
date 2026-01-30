@@ -300,6 +300,10 @@ void CustomController::computeSlow()
             std::cout<<"cc mode 7"<<std::endl;
             torque_init_ = rd_cc_.torque_desired;
 
+            commandReset();
+            updateRobotStates();
+            generateZMP();
+
             processNoise();
             // processBias();
             processObservation();
@@ -310,6 +314,7 @@ void CustomController::computeSlow()
         // processBias();
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/hz_) // 125 is the control frequency
         {
+
 
             action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_actuator_action-1)*5/hz_, 0.0, 5/hz_);
             // if (value_ < 10.0)
@@ -323,6 +328,7 @@ void CustomController::computeSlow()
             //     }
             // }
             time_inference_pre_ = rd_cc_.control_time_us_;
+            walking_tick++;
         }
 
         for (int i = 0; i < num_actuator_action; i++)
