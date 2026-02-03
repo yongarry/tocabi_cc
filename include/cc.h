@@ -10,6 +10,9 @@
 #include <geometry_msgs/PoseArray.h>
 
 #include "onnxruntime_cxx_api.h"
+#include "preview_controller.h"
+
+using namespace Eigen;
 
 class CustomController
 {
@@ -18,12 +21,14 @@ public:
     Eigen::VectorQd getControl();
 
     //void taskCommandToCC(TaskCommand tc_);
-    string workspace_dir_ = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/";
-    string weight_dir_ = "";
+    string workspace_dir_ = "/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/";
+    string weight_file_ = "";
+    string cmd_file_ = "";
 
-    const double hz_ =125.;
+    const double hz_ = 125.;
     const double pd_hz_ = 2000;
     double del_t = 1 / hz_;
+    double preview_horizon_ = 2.0 * hz_;
 
     void computeSlow();
     void computeFast();
@@ -45,13 +50,11 @@ public:
 
     int input_obs_idx_ = 0;
     void initVariable();
+    void loadCommands();
+
     void processNoise();
     void processObservation();
     void feedforwardPolicy();
-
-    // void processBias();
-    // void initBias();
-    // Eigen::Matrix<double, MODEL_DOF, 1> q_bias_;
 
     static const int num_actuator_action = 12;
     int num_cur_state = 68;
@@ -59,21 +62,25 @@ public:
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;
 
-    Eigen::MatrixXd rl_action_;
+    MatrixXd rl_action_;
 
     double value_;
     bool stop_by_value_thres_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_stop_;
     float stop_start_time_;
     
-    bool is_on_robot_ = true;
+    bool is_on_robot_ = false;
     
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_pre_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_vel_noise_;
-    Eigen::Vector12d q_leg_desired_;
+    Vector12d q_leg_desired_;
+
+    // void processBias();
+    // void initBias();
+    // Eigen::Matrix<double, MODEL_DOF, 1> q_bias_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> torque_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> torque_spline_;
@@ -98,17 +105,62 @@ public:
     
     // BIPED WALKING PARAMETER
     const int number_of_foot_step = 2;
-    Eigen::MatrixXd foot_commands_;
-    Eigen::VectorXd phase_indicator_;
-    Eigen::VectorXd t_total_;
-    int first_stance_foot_ = 1; // 1 means right foot stance, 0 means left foot stance
-    const double com_height_ = 0.728;
+    MatrixXd foot_commands_;
+    VectorXd phase_indicator_; // 0 means left foot stance(right swing), 1 means right foot stance(left swing)
+    VectorXd t_total_;
+    bool is_right_stance_first = false; 
+    const double vrp_height_ = 0.728;
+
+    int number_of_planner_step = 0;
+    int planner_index_ = 0;
+    MatrixXd foot_commands_planner_;
+
 
     // VRP + Preview Control
+    PreviewController preview_ctrl_{del_t, preview_horizon_};
 
+    void updateCommand();
+    void updateRobotStates();
+
+    void generateVRP();
+    void oneStepVRP(int step, Eigen::MatrixXd &vrp_temp_, Eigen::VectorXd &com_yaw_temp_, Eigen::VectorXd &com_yaw_vel_temp_);
+    void generateCoM();
+    void generateFeet();
+    
+    void getTargetJointPos();
+    void computeIkControl(const Eigen::Isometry3d &float_trunk_transform, const Eigen::Isometry3d &float_lleg_transform, const Eigen::Isometry3d &float_rleg_transform, Eigen::Vector12d &q_des);
+
+    // Robot States
+    Isometry3d pelvis_state_global_;
+    Vector3d com_pos_state_global_;
+    Vector3d com_vel_state_global_;
+    Isometry3d stance_foot_state_global_;
+    Isometry3d swing_foot_state_global_;
+
+    Isometry3d pelvis_state_stance_;
+    Vector3d com_pos_state_stance_;
+    Vector3d com_vel_state_stance_;
+    Isometry3d swing_state_stance_;
+
+    Vector4d vrp_state_;
+    double vrp_horizon_s_ = 4.0;
+    MatrixXd vrp_ref_;
+    VectorXd com_yaw_ref_, com_yaw_vel_ref_;
+
+    MatrixXd target_stance_foot_state_first_stance_;
+    MatrixXd target_swing_foot_state_first_stance_;
+
+    Vector3d swing_foot_start_pos_stance_, swing_foot_start_rot_stance_;
+    Vector3d swing_foot_end_pos_stance_, swing_foot_end_rot_stance_;
+
+    Isometry3d target_swing_foot_stance_, target_stance_foot_stance_;
+    Isometry3d target_lfoot_stance_, target_rfoot_stance_;
+    Isometry3d target_pelvis_stance_, target_pelvis_global_;
+
+    Isometry3d target_lfoot_float_, target_rfoot_float_;
+    Isometry3d target_pelvis_float_;
 
     // Utility functions
-    Eigen::Vector3d mat2euler(Eigen::Matrix3d mat);
     static double wrap_to_pi(double angles){
         angles = fmod(angles, 2*M_PI);
         if (angles > M_PI){
@@ -119,7 +171,7 @@ public:
 
 
 private:
-    Eigen::VectorQd ControlVal_;
+    VectorQd ControlVal_;
 
     Ort::Env env;
     Ort::Session session;
