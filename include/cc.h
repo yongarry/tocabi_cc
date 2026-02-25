@@ -18,7 +18,7 @@ public:
     Eigen::VectorQd getControl();
 
     //void taskCommandToCC(TaskCommand tc_);
-    string workspace_dir_ = "/home/yong20/ros_ws/ros1/tocabi_ws/src/tocabi_cc/";
+    string workspace_dir_ = "/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/";
     string weight_dir_ = "";
 
     const double hz_ =125.;
@@ -32,7 +32,8 @@ public:
     RobotData &rd_;
     RobotData rd_cc_;
 
-
+    bool is_on_robot_ = false;
+    bool is_write_file_ = true;
     /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
     void loadNetwork();
     size_t input_number, output_number;
@@ -82,8 +83,6 @@ public:
 
     float phase_ = 0.0;
 
-    bool is_on_robot_ = true;
-    bool is_write_file_ = true;
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
 
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;

@@ -797,7 +797,7 @@ void CustomController::computeSlow()
         processBias();
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/hz_) // 125 is the control frequency
         {
-            // auto start_time = std::chrono::high_resolution_clock::now();
+            auto start_time = std::chrono::steady_clock::now();
             // Call the functions you want to measure
             if (policy_mode == 2)
                 updateFootstepCommand_intern();
@@ -808,17 +808,17 @@ void CustomController::computeSlow()
             getComTrajectory(); 
             getFootTrajectory();
             getTargetState();
+            auto dt0 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+            auto t0 = std::chrono::steady_clock::now();
+            cout << "getTargetState took " << dt0 << " us" << endl;
             if (policy_mode == 0 || policy_mode == 1 || policy_mode == 2){
                 processObservation();
                 feedforwardPolicy();
             }
             updateNextStepTime();
-            // End time measurement
-            // auto end_time = std::chrono::high_resolution_clock::now();
-            // // Calculate the duration in microseconds
-            // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-            // // Output the time taken
-            // std::cout << "processObservation and feedforwardPolicy took " << duration << " us" << std::endl;
+            // Calculate the duration in microseconds
+            auto dt1 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+            cout << "processObservation and feedforwardPolicy took " << dt1 << " us" << endl;
 
             action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*5/hz_, 0.0, 5/hz_);
             // if (value_ < 10.0)
