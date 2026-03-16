@@ -25,7 +25,7 @@ public:
     string weight_file_ = "";
     string cmd_file_ = "";
 
-    const double hz_ = 125.;
+    const double hz_ = 100.;
     const double pd_hz_ = 2000;
     double del_t = 1 / hz_;
     double preview_horizon_ = 2.0 * hz_;
@@ -37,7 +37,7 @@ public:
     RobotData &rd_;
     RobotData rd_cc_;
 
-
+    bool is_on_robot_ = false;
     /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
     void loadNetwork();
     size_t input_number, output_number;
@@ -63,13 +63,12 @@ public:
     int num_state = num_cur_state * num_state_hist;
 
     MatrixXd rl_action_;
+    Vector12d q_lower_limit_, q_upper_limit_, q_target_;
 
     double value_;
     bool stop_by_value_thres_ = false;
     Eigen::Matrix<double, MODEL_DOF, 1> q_stop_;
     float stop_start_time_;
-    
-    bool is_on_robot_ = false;
     
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
@@ -131,9 +130,9 @@ public:
     void computeIkControl(const Eigen::Isometry3d &float_trunk_transform, const Eigen::Isometry3d &float_lleg_transform, const Eigen::Isometry3d &float_rleg_transform, Eigen::Vector12d &q_des);
 
     // Robot States
-    Isometry3d pelvis_state_global_;
     Vector3d com_pos_state_global_;
     Vector3d com_vel_state_global_;
+    Isometry3d pelvis_state_global_;
     Isometry3d stance_foot_state_global_;
     Isometry3d swing_foot_state_global_;
 
@@ -159,6 +158,8 @@ public:
 
     Isometry3d target_lfoot_float_, target_rfoot_float_;
     Isometry3d target_pelvis_float_;
+
+    VectorXd target_com_state_stance_, target_com_state_global_;
 
     // Utility functions
     static double wrap_to_pi(double angles){
