@@ -16,7 +16,8 @@ CustomController::CustomController(RobotData &rd)
     nh_.getParam("/tocabi_cc/weight", weight_file_);
     nh_.getParam("/tocabi_cc/cmd", cmd_file_);
     writeFile.open("/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
-
+    if (is_on_robot_)
+        writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
     initVariable();
     std::cout << "Load network start\n" << std::endl;
     loadNetwork();
@@ -110,7 +111,7 @@ void CustomController::loadNetwork()
     for (size_t i = 0; i < num_actuator_action; i++) {
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
-    value_ = output_tensors[1].GetTensorMutableData<float>()[0];
+    // value_ = output_tensors[1].GetTensorMutableData<float>()[0];
     std::cout << "RL Action: " << rl_action_.transpose() << std::endl;
     std::cout << "Value: " << value_ << std::endl;
 }
@@ -297,17 +298,20 @@ void CustomController::processObservation()
     }
 
     // 5. target joint positions
-    for (int i = 0; i < num_actuator_action; i++)
-        state_cur_[data_idx++] = q_leg_desired_(i);
+    // for (int i = 0; i < num_actuator_action; i++)
+    //     state_cur_[data_idx++] = q_leg_desired_(i);
 
     // 6. phase input
+    if (foot_commands_(0, 0) == 0)
+        walking_tick = 0;
     state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
     state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
 
     // 7. LIPM foot commands
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < 9; i++){
         state_cur_[data_idx++] = foot_commands_(0, i);
-
+        // if (i == 1) cout << "foot_commands_(0, 1): " << foot_commands_(0, i) << endl;
+    }
     // 8. previous action
     for (int i = 0; i <num_actuator_action; i++) 
         state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
@@ -337,7 +341,7 @@ void CustomController::feedforwardPolicy()
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
     }
     // output tensor to value_
-    value_ = output_tensors[1].GetTensorMutableData<float>()[0];
+    // value_ = output_tensors[1].GetTensorMutableData<float>()[0];
 }
 
 void CustomController::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
@@ -406,6 +410,8 @@ void CustomController::computeSlow()
                 writeFile << target_rfoot_stance_.translation()(i) << "\t";
             for (int i = 0; i < 6; i++)
                 writeFile << q_leg_desired_(i) << "\t";
+            for (int i = 0; i < 6; i++)
+                writeFile << q_target_(i) << "\t";
             for (int i = 0; i < 6; i++)
                 writeFile << q_noise_(i) << "\t";
             writeFile << endl;
@@ -544,7 +550,8 @@ void CustomController::generateVRP()
 
     // calculate vrp points based on foot commands
     target_stance_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
-    target_stance_foot_state_first_stance_(0, 2) = vrp_state_(2);
+    // target_stance_foot_state_first_stance_(0, 2) = vrp_state_(2);
+    target_stance_foot_state_first_stance_(0, 2) = 0.728;
 
     target_swing_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
     target_swing_foot_state_first_stance_(0, 0) = target_stance_foot_state_first_stance_(0, 0) + foot_commands_(0, 0);

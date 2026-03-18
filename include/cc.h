@@ -57,7 +57,7 @@ public:
     void feedforwardPolicy();
 
     static const int num_actuator_action = 12;
-    int num_cur_state = 68;
+    int num_cur_state = 56;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;
