@@ -25,7 +25,7 @@ public:
     string weight_file_ = "";
     string cmd_file_ = "";
 
-    const double hz_ = 100.;
+    const double hz_ = 125.;
     const double pd_hz_ = 2000;
     double del_t = 1 / hz_;
     double preview_horizon_ = 2.0 * hz_;
@@ -57,7 +57,7 @@ public:
     void feedforwardPolicy();
 
     static const int num_actuator_action = 12;
-    int num_cur_state = 56;
+    int num_cur_state = 68;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;

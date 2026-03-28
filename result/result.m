@@ -11,14 +11,16 @@ q_ = data(:, [28:33]);
 
 for index = 1:6
    subplot(3,2,index);
-   plot(q_(:, index));
+   plot(q_(1:end, index));
    hold on;
-   plot(q_des(:, index));
-   plot(action_q(:, index));
+   plot(q_des(1:end, index));
+   plot(action_q(1:end, index));
    hold off;
     title(['Plot for Index ', num2str(index)]);
     xlabel('Time');
     ylabel('Value');
     ylim([-1.0,1.5])
 end
-
+fig2 = figure;
+plot(data(:,[34:end]));
+legend;

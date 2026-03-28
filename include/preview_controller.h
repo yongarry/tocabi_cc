@@ -12,7 +12,7 @@ public:
     PreviewController(double dt, double time_horizon);
     ~PreviewController();
 
-    void init();
+    void init(float vrp_height);
     Eigen::MatrixXd compute_target_state(const Eigen::MatrixXd &vrp_ref);
     void update_state(const Eigen::MatrixXd &next_state);
 

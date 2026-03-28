@@ -23,7 +23,7 @@ CustomController::CustomController(RobotData &rd)
     loadNetwork();
     std::cout << "Load network end\n" << std::endl;
 
-    preview_ctrl_.init();
+    preview_ctrl_.init(vrp_height_);
 
     joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &CustomController::joyCallback, this);
 }
@@ -298,11 +298,11 @@ void CustomController::processObservation()
     }
 
     // 5. target joint positions
-    // for (int i = 0; i < num_actuator_action; i++)
-    //     state_cur_[data_idx++] = q_leg_desired_(i);
+    for (int i = 0; i < num_actuator_action; i++)
+        state_cur_[data_idx++] = q_leg_desired_(i);
 
     // 6. phase input
-    if (foot_commands_(0, 0) == 0)
+    if (planner_index_ > number_of_planner_step)
         walking_tick = 0;
     state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
     state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
@@ -414,6 +414,8 @@ void CustomController::computeSlow()
                 writeFile << q_target_(i) << "\t";
             for (int i = 0; i < 6; i++)
                 writeFile << q_noise_(i) << "\t";
+            for (int i = 0; i < 6; i++)
+                writeFile << torque_rl_(i) << "\t";
             writeFile << endl;
 
             processNoise();
@@ -435,8 +437,10 @@ void CustomController::computeSlow()
         }
 
         for (int i = 0; i < num_actuator_action; i++){
-            q_target_(i) = 0.5 * (q_upper_limit_(i) + q_lower_limit_(i)) + 0.5 * (q_upper_limit_(i) - q_lower_limit_(i)) * rl_action_(i);
-            torque_rl_(i) = kp_(i,i) * (q_target_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
+            // q_target_(i) = 0.5 * (q_upper_limit_(i) + q_lower_limit_(i)) + 0.5 * (q_upper_limit_(i) - q_lower_limit_(i)) * rl_action_(i);
+            // torque_rl_(i) = kp_(i,i) * (q_target_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
+            // torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
+            torque_rl_(i) = rl_action_(i)*torque_bound_(i);
         }
 
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
@@ -551,7 +555,7 @@ void CustomController::generateVRP()
     // calculate vrp points based on foot commands
     target_stance_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
     // target_stance_foot_state_first_stance_(0, 2) = vrp_state_(2);
-    target_stance_foot_state_first_stance_(0, 2) = 0.728;
+    target_stance_foot_state_first_stance_(0, 2) = vrp_height_;
 
     target_swing_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
     target_swing_foot_state_first_stance_(0, 0) = target_stance_foot_state_first_stance_(0, 0) + foot_commands_(0, 0);
@@ -659,7 +663,8 @@ void CustomController::generateCoM()
     target_com_state_global_.segment(3, 3) = stance_foot_state_global_.linear() * target_com_state_stance_.segment(3, 3);
     target_com_state_global_.segment(6, 3) = stance_foot_state_global_.linear() * target_com_state_stance_.segment(6, 3);
 
-    target_pelvis_stance_.translation() = pelvis_state_stance_.translation() + 0.7 * (target_com_state_stance_.segment(0, 3) - com_pos_state_stance_);
+    // target_pelvis_stance_.translation() = pelvis_state_stance_.translation() + 0.7 * (target_com_state_stance_.segment(0, 3) - com_pos_state_stance_);
+    target_pelvis_stance_.translation() = target_com_state_stance_.segment(0, 3);
     target_pelvis_stance_.linear() = DyrosMath::rotateWithZ(com_yaw_ref_(walking_tick));
 }
 

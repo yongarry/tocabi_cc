@@ -1,4 +1,5 @@
 #include "preview_controller.h"
+using namespace std;
 
 PreviewController::PreviewController(double dt, double time_horizon)
     : dt_(dt), time_horizon_(time_horizon)
@@ -14,7 +15,7 @@ PreviewController::~PreviewController()
 {
 }
 
-void PreviewController::init()
+void PreviewController::init(float vrp_height)
 {
     // System matrices A, B, C
     A_ <<   1, dt_, pow(dt_, 2) / 2,
@@ -25,44 +26,66 @@ void PreviewController::init()
             pow(dt_, 2) / 2,
             dt_;
 
-    C_ << 1, 0, -0.728 / 9.81;
+    C_ << 1, 0, -vrp_height / 9.81;
 
+    // Augmented system matrices (MATLAB: A_bar = [I_bar, F_bar])
+    // A_bar (4x4): col 0 = [1;0;0;0], cols 1-3 = [C*A; A]
+    Eigen::Vector4d I_bar;
+    I_bar << 1, 0, 0, 0;
+
+    Eigen::Matrix4d A_bar;
+    A_bar.col(0) = I_bar;
+    A_bar.block<1, 3>(0, 1) = C_ * A_;
+    A_bar.block<3, 3>(1, 1) = A_;
+
+    // B_bar (4x1): [C*B; B]
+    Eigen::Vector4d B_bar;
+    B_bar(0) = (C_ * B_)(0);
+    B_bar.tail<3>() = B_;
+
+    // Cost matrices: Q_bar has Q_e=1 at (0,0), R=1e-6
+    Eigen::Matrix4d Q_bar = Eigen::Matrix4d::Zero();
+    Q_bar(0, 0) = 1.0;
+    const double R = 1e-6;
+
+    // Solve DARE iteratively: K = A'KA - A'KB(R+B'KB)^{-1}B'KA + Q
+    Eigen::Matrix4d K = Q_bar;
+    for (int iter = 0; iter < 200000; ++iter)
+    {
+        double S_iter = R + (B_bar.transpose() * K * B_bar)(0, 0);
+        Eigen::Matrix4d K_new = A_bar.transpose() * K * A_bar
+                              - (A_bar.transpose() * K * B_bar) * (1.0 / S_iter) * (B_bar.transpose() * K * A_bar)
+                              + Q_bar;
+        double err = (K_new - K).norm();
+        K = K_new;
+        if (err < 1e-10)
+            break;
+    }
+    K_dare_ = K;
+
+    // Optimal gain: G = (R + B'KB)^{-1} * B' * K * A_bar  (1x4)
+    double S = R + (B_bar.transpose() * K * B_bar)(0, 0);
+    Eigen::RowVector4d G = (1.0 / S) * (B_bar.transpose() * K * A_bar);
+
+    G_i_dare_ = G(0);
+    G_x_dare_ = G.segment(1, 3);  // 1x3
+
+    // Ac_bar_T = (A_bar - B_bar * G)'
+    Eigen::Matrix4d Ac_bar_T = (A_bar - B_bar * G).transpose();
+
+    // RBT = (R + B'KB)^{-1} * B'  (1x4)
+    Eigen::RowVector4d RBT = (1.0 / S) * B_bar.transpose();
+
+    // X_dare_[0] = -Ac_bar_T * K * I_bar
     X_dare_.setZero(NL_, 4);
-    Eigen::Vector4d x_dare_0;
-    x_dare_0 << -55.285035334563560,
-                -1.555860083640699e+03,
-                -4.318355308321815e+02,
-                -2.184808186673521;
-    X_dare_.row(0) = x_dare_0;
+    X_dare_.row(0) = (-Ac_bar_T * K * I_bar).transpose();
 
     G_d_dare_.setZero(NL_);
-
-    K_dare_.resize(4, 4);
-    K_dare_ <<  56.285035334559723, 1.555860083640587e+03, 4.318355308321502e+02, 2.184808186673372,
-                1.555860083640587e+03, 4.438808670021533e+04, 1.232544343284430e+04, 63.789558477062045,
-                4.318355308321502e+02, 1.232544343284430e+04, 3.422554848344056e+03, 17.738596936652250,
-                2.184808186673372, 63.789558477062045, 17.738596936652250, 0.099079098311263;
-
-    G_i_dare_ = 5.156153390660927e+02;
-    G_x_dare_.resize(1, 3);
-    G_x_dare_ << 2.902142757843520e+04, 8.312467521458724e+03, 1.144927293595159e+02;
-
     G_d_dare_(0) = -G_i_dare_;
-
-    Eigen::Matrix4d Ac_bar_T;
-    Ac_bar_T << 1.382552154670966,	-8.593588984435812e-05,	-0.025780766953308,	-5.156153390661508,
-                22.531961543010048,	0.995163095403594,	-1.451071378921841,	-2.902142757843676e+02,
-                6.177295889074953,	0.008614588746423,	0.584376623927040,	-83.124675214591917,    
-                0.010785970858796,	3.091787844008025e-05,	0.004275363532024,	-0.144927293595184;
-
-    Eigen::RowVector4d RBT;
-    RBT << -1.972497589419503e+02,	0.044309862980228,	13.292958894068470,	2.658591778813694e+03;
 
     for (int l = 1; l < NL_; ++l)
     {
-        // X_dare[l] = Ac_bar_T * X_dare[l-1]
         X_dare_.row(l) = (Ac_bar_T * X_dare_.row(l - 1).transpose()).transpose();
-        // G_d_dare[l] = RBT * X_dare[l-1]
         G_d_dare_(l) = RBT * X_dare_.row(l - 1).transpose();
     }
 }
