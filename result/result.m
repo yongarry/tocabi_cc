@@ -9,6 +9,7 @@ q_des = data(:, [16:21]);
 action_q = data(:, [22:27]);
 q_ = data(:, [28:33]);
 
+fig1 = figure;
 for index = 1:6
    subplot(3,2,index);
    plot(q_(1:end, index));

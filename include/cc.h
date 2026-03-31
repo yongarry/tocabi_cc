@@ -109,6 +109,7 @@ public:
     VectorXd t_total_;
     bool is_right_stance_first = false; 
     const double vrp_height_ = 0.728;
+    // const double vrp_height_ = 0.68;
 
     int number_of_planner_step = 0;
     int planner_index_ = 0;

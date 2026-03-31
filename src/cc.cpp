@@ -302,7 +302,7 @@ void CustomController::processObservation()
         state_cur_[data_idx++] = q_leg_desired_(i);
 
     // 6. phase input
-    if (planner_index_ > number_of_planner_step)
+    if (planner_index_ > number_of_planner_step+1)
         walking_tick = 0;
     state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
     state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
