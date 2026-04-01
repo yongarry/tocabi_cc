@@ -272,10 +272,10 @@ void CustomController::processObservation()
     Vector3d base_lin_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(0,3));
     Vector3d base_ang_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(3,3));
 
-    for (int i = 0; i < 3; i++)
-        state_cur_[data_idx++] = base_lin_vel(i);
-    for (int i = 0; i < 3; i++)
-        state_cur_[data_idx++] = base_ang_vel(i);
+    // for (int i = 0; i < 3; i++)
+    //     state_cur_[data_idx++] = base_lin_vel(i);
+    // for (int i = 0; i < 3; i++)
+    //     state_cur_[data_idx++] = base_ang_vel(i);
     
     // 2. projected gravity
     Vector3d grav, projected_grav;
@@ -298,11 +298,11 @@ void CustomController::processObservation()
     }
 
     // 5. target joint positions
-    for (int i = 0; i < num_actuator_action; i++)
-        state_cur_[data_idx++] = q_leg_desired_(i);
+    // for (int i = 0; i < num_actuator_action; i++)
+    //     state_cur_[data_idx++] = q_leg_desired_(i);
 
     // 6. phase input
-    if (planner_index_ > number_of_planner_step+1)
+    if (planner_index_ > number_of_planner_step + 1)
         walking_tick = 0;
     state_cur_[data_idx++] = cos(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
     state_cur_[data_idx++] = sin(float(walking_tick) / float(t_total_(0)) * 2 * M_PI);
@@ -416,6 +416,11 @@ void CustomController::computeSlow()
                 writeFile << q_noise_(i) << "\t";
             for (int i = 0; i < 6; i++)
                 writeFile << torque_rl_(i) << "\t";
+            for (int i = 0; i < 3; i++)
+                writeFile << swing_state_stance_.translation()(i) << "\t";
+            //     writeFile << rd_cc_.link_[Left_Foot].xpos(i) << "\t";
+            // for (int i = 0; i < 3; i++)
+            //     writeFile << rd_cc_.link_[Right_Foot].xpos(i) << "\t";
             writeFile << endl;
 
             processNoise();
@@ -489,9 +494,12 @@ void CustomController::updateCommand()
     else if (walking_tick > t_total_(0)){
         // update foot commands: update foot commands adding foot commands error
         cout << "================================================" << endl;
-        cout << "Foot Position Error: " << (swing_state_stance_.translation().transpose() - foot_commands_.row(0).segment(0, 3)) << endl;
-        // cout << "Foot commands      : " << foot_commands_ << endl;
-
+        Eigen::Vector3d foot_pos_error = swing_state_stance_.translation() - foot_commands_.row(0).segment(0, 3).transpose();
+        cout << "Foot Position Error  : " << foot_pos_error.transpose() << endl;
+        cout << "RFoot global position: " << rd_cc_.link_[Right_Foot].xpos.transpose() << endl;
+        Eigen::Vector3d rfoot_local_pos = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * rd_cc_.link_[Right_Foot].xpos;
+        cout << "swing_state_stance   : " << swing_state_stance_.translation().transpose() << endl;
+        cout << "RFoot local position : " << rfoot_local_pos.transpose() << endl;
 
         foot_commands_.block(0, 0, number_of_foot_step - 1, 9) = foot_commands_.block(1, 0, number_of_foot_step - 1, 9);
         if (planner_index_ < number_of_planner_step) 
@@ -503,7 +511,16 @@ void CustomController::updateCommand()
         t_total_.segment(0, number_of_foot_step - 1) = t_total_.segment(1, number_of_foot_step - 1);
         t_total_(number_of_foot_step - 1) = floor((foot_commands_(number_of_foot_step - 1, 6) + foot_commands_(number_of_foot_step - 1, 7)*2) * hz_); // dsp + ssp + dsp 
         if (phase_indicator_(number_of_foot_step - 1) == 0) foot_commands_(number_of_foot_step - 1, 1) *= -1; // if left foot stance, y cmd should be negative
+        // // 발 위치 오차를 다음 스텝 커맨드의 x, y, z에 반영
+        foot_commands_(0, 0) -= foot_pos_error(0);
+        if (phase_indicator_(0) == 0)
+            foot_commands_(0, 1) -= foot_pos_error(1);
+        else
+            foot_commands_(0, 1) -= foot_pos_error(1);
+        foot_commands_(0, 2) -= foot_pos_error(2);
         planner_index_++;
+        cout << "next foot_commands   : " << foot_commands_.row(0).segment(0, 3) << endl;
+        cout << "planner_index_       : " << planner_index_ << endl;
         walking_tick = 0;
     }
 }
