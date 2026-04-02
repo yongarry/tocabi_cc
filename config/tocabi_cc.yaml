@@ -1,0 +1,4 @@
+weight: "policy3d-lcp11.onnx"
+cmd: "command.csv"
+# cmd: "global_command.csv"
+cmd_mode: 0 # 0: local, 1: global

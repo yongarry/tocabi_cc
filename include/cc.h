@@ -1,7 +1,10 @@
 #include "tocabi_lib/robot_data.h"
 #include "wholebody_functions.h"
 #include <random>
+#include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 
 #include <ros/ros.h>
 #include <sensor_msgs/Joy.h>
@@ -9,10 +12,12 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseArray.h>
 
+#include <yaml-cpp/yaml.h>
 #include "onnxruntime_cxx_api.h"
 #include "preview_controller.h"
 
 using namespace Eigen;
+using namespace std;
 
 class CustomController
 {
@@ -24,6 +29,7 @@ public:
     string workspace_dir_ = "/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/";
     string weight_file_ = "";
     string cmd_file_ = "";
+    int cmd_mode_ = 0;
 
     const double hz_ = 125.;
     const double pd_hz_ = 2000;
@@ -38,6 +44,7 @@ public:
     RobotData rd_cc_;
 
     bool is_on_robot_ = false;
+    ofstream writeFile;
     /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
     void loadNetwork();
     size_t input_number, output_number;
@@ -57,8 +64,8 @@ public:
     void feedforwardPolicy();
 
     static const int num_actuator_action = 12;
-    // int num_cur_state = 68;
-    int num_cur_state = 50;
+    int num_cur_state = 68;
+    // int num_cur_state = 50;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;
@@ -114,7 +121,11 @@ public:
 
     int number_of_planner_step = 0;
     int planner_index_ = 0;
+    int current_step_number_ = 0;
     MatrixXd foot_commands_planner_;
+
+    Vector3d lfoot_global_state_; // (x, y, yaw) in global frame
+    Vector3d rfoot_global_state_;
 
 
     // VRP + Preview Control

@@ -10,6 +10,7 @@ tocabi_msgs
 eigen_conversions
 )
 
+find_package(yaml-cpp REQUIRED)
 catkin_package(
   INCLUDE_DIRS include /usr/local/include/onnxruntime
   LIBRARIES ${PROJECT_NAME} onnxruntime
@@ -40,6 +41,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 target_link_libraries(${PROJECT_NAME} PUBLIC
   ${catkin_LIBRARIES}
   onnxruntime
+  ${YAML_CPP_LIBRARIES}
 )
 
 install(TARGETS ${PROJECT_NAME}
@@ -53,3 +55,7 @@ install(DIRECTORY include/${PROJECT_NAME}/
   FILES_MATCHING PATTERN "*.h"
   PATTERN ".svn" EXCLUDE
 )
+
+# install(DIRECTORY config/
+#   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
+# )
