@@ -1,5 +1,6 @@
 #include "tocabi_lib/robot_data.h"
 #include "wholebody_functions.h"
+#include <memory>
 #include <random>
 #include <algorithm>
 #include <cmath>
@@ -31,7 +32,7 @@ public:
     string cmd_file_ = "";
     int cmd_mode_ = 0;
 
-    const double hz_ = 125.;
+    double hz_ = 125.;
     const double pd_hz_ = 2000;
     double del_t = 1 / hz_;
     double preview_horizon_ = 2.0 * hz_;
@@ -45,6 +46,8 @@ public:
 
     bool is_on_robot_ = false;
     ofstream writeFile;
+    bool write_file_ = true;
+    int policy_mode = 0;
     /////////////////////////////////// ONNX Runtime by Yongarry ///////////////////////////////////////
     void loadNetwork();
     size_t input_number, output_number;
@@ -116,8 +119,7 @@ public:
     VectorXd phase_indicator_; // 0 means left foot stance(right swing), 1 means right foot stance(left swing)
     VectorXd t_total_;
     bool is_right_stance_first = false; 
-    const double vrp_height_ = 0.728;
-    // const double vrp_height_ = 0.68;
+    double vrp_height_ = 0.728;
 
     int number_of_planner_step = 0;
     int planner_index_ = 0;
@@ -128,8 +130,8 @@ public:
     Vector3d rfoot_global_state_;
 
 
-    // VRP + Preview Control
-    PreviewController preview_ctrl_{del_t, preview_horizon_};
+    // VRP + Preview Control (initialized after hz_ is loaded from config)
+    std::unique_ptr<PreviewController> preview_ctrl_;
 
     void updateCommand();
     void updateRobotStates();
@@ -153,6 +155,11 @@ public:
     Vector3d com_pos_state_stance_;
     Vector3d com_vel_state_stance_;
     Isometry3d swing_state_stance_;
+
+    Isometry3d lfoot_support_current_;
+    Isometry3d rfoot_support_current_;
+    Isometry3d rfoot_global_current_;
+    Isometry3d lfoot_global_current_;
 
     Vector4d vrp_state_;
     double vrp_horizon_s_ = 4.0;
@@ -182,7 +189,6 @@ public:
         }
         return angles;
     }
-
 
 private:
     VectorQd ControlVal_;

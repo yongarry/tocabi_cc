@@ -2,13 +2,19 @@
 
 using namespace TOCABI;
 
-void loadConfig(const std::string& path, std::string& weight, std::string& cmd, int& cmd_mode)
+void loadConfig(const std::string& path, bool& is_on_robot, bool& write_file, std::string& weight, std::string& cmd, int& cmd_mode, int& policy_mode, double& hz, double& preview_height)
 {
     try {
         YAML::Node cfg = YAML::LoadFile(path);
+        if (cfg["is_on_robot"]) is_on_robot = cfg["is_on_robot"].as<bool>();
+        if (cfg["write_file"]) write_file = cfg["write_file"].as<bool>();
         if (cfg["weight"]) weight = cfg["weight"].as<std::string>();
         if (cfg["cmd"]) cmd = cfg["cmd"].as<std::string>();
-        if (cfg["cmd_mode"]) cmd_mode = cfg["cmd_mode"].as<int>();}
+        if (cfg["cmd_mode"]) cmd_mode = cfg["cmd_mode"].as<int>();
+        if (cfg["policy_mode"]) policy_mode = cfg["policy_mode"].as<int>();
+        if (cfg["hz"]) hz = cfg["hz"].as<double>();
+        if (cfg["preview_height"]) preview_height = cfg["preview_height"].as<double>();
+    }
     catch (const YAML::Exception& e) {
         ROS_WARN_STREAM("tocabi_cc: YAML parse error in " << path << ": " << e.what());}
     catch (const std::exception& e) {
@@ -22,7 +28,7 @@ CustomController::CustomController(RobotData &rd)
         session(nullptr)
 {
     const std::string cfg_path = workspace_dir_ + "config/tocabi_cc.yaml";
-    loadConfig(cfg_path, weight_file_, cmd_file_, cmd_mode_);
+    loadConfig(cfg_path, is_on_robot_, write_file_, weight_file_, cmd_file_, cmd_mode_, policy_mode, hz_, vrp_height_);
     writeFile.open("/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
     if (is_on_robot_)
         writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
@@ -31,7 +37,10 @@ CustomController::CustomController(RobotData &rd)
     loadNetwork();
     std::cout << "Load network end\n" << std::endl;
 
-    preview_ctrl_.init(vrp_height_);
+    del_t = 1.0 / hz_;
+    preview_horizon_ = 2.0 * hz_;
+    preview_ctrl_ = std::make_unique<PreviewController>(del_t, preview_horizon_);
+    preview_ctrl_->init(vrp_height_);
 
     joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &CustomController::joyCallback, this);
 }
@@ -381,7 +390,7 @@ void CustomController::computeSlow()
             generateVRP();
             Matrix3d init_preview_state = Matrix3d::Zero();
             init_preview_state.row(0) = com_pos_state_stance_;
-            preview_ctrl_.update_state(init_preview_state);
+            preview_ctrl_->update_state(init_preview_state);
             generateCoM();
             generateFeet();
             getTargetJointPos();
@@ -406,30 +415,32 @@ void CustomController::computeSlow()
             generateCoM();
             generateFeet();
             getTargetJointPos();
-            for (int i = 0; i < 3; i++)
-                writeFile << vrp_ref_(walking_tick, i) << "\t";
-            for (int i = 0; i < 3; i++)
-                writeFile << target_com_state_stance_(i) << "\t";
-            for (int i = 0; i < 3; i++)
-                writeFile << target_pelvis_stance_.translation()(i) << "\t";
-            for (int i = 0; i < 3; i++)
-                writeFile << target_lfoot_stance_.translation()(i) << "\t";
-            for (int i = 0; i < 3; i++)
-                writeFile << target_rfoot_stance_.translation()(i) << "\t";
-            for (int i = 0; i < 6; i++)
-                writeFile << q_leg_desired_(i) << "\t";
-            for (int i = 0; i < 6; i++)
-                writeFile << q_target_(i) << "\t";
-            for (int i = 0; i < 6; i++)
-                writeFile << q_noise_(i) << "\t";
-            for (int i = 0; i < 6; i++)
-                writeFile << rd_.torque_desired(i) << "\t";
-            for (int i = 0; i < 3; i++)
-                // writeFile << swing_state_stance_.translation()(i) << "\t";
-                writeFile << rd_cc_.link_[Left_Foot].xpos(i) << "\t";
-            for (int i = 0; i < 3; i++)
-                writeFile << rd_cc_.link_[Right_Foot].xpos(i) << "\t";
-            writeFile << endl;
+            if (write_file_)
+            {
+                for (int i = 0; i < 3; i++)
+                    writeFile << vrp_ref_(walking_tick, i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << target_com_state_stance_(i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << target_pelvis_stance_.translation()(i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << target_lfoot_stance_.translation()(i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << target_rfoot_stance_.translation()(i) << "\t";
+                for (int i = 0; i < 6; i++)
+                    writeFile << q_leg_desired_(i) << "\t";
+                for (int i = 0; i < 6; i++)
+                    writeFile << q_target_(i) << "\t";
+                for (int i = 0; i < 6; i++)
+                    writeFile << q_noise_(i) << "\t";
+                for (int i = 0; i < 6; i++)
+                    writeFile << rd_.torque_desired(i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << lfoot_global_state_(i) << "\t";
+                for (int i = 0; i < 3; i++)
+                    writeFile << rfoot_global_state_(i) << "\t";
+                writeFile << endl;
+            }
 
             processNoise();
             processObservation();
@@ -453,7 +464,10 @@ void CustomController::computeSlow()
             // q_target_(i) = 0.5 * (q_upper_limit_(i) + q_lower_limit_(i)) + 0.5 * (q_upper_limit_(i) - q_lower_limit_(i)) * rl_action_(i);
             // torque_rl_(i) = kp_(i,i) * (q_target_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
             // torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
-            torque_rl_(i) = rl_action_(i)*torque_bound_(i);
+            if (policy_mode == 0)
+                torque_rl_(i) = rl_action_(i)*torque_bound_(i);
+            else
+                torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i) + rl_action_(i)*torque_bound_(i);
         }
 
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
@@ -523,115 +537,110 @@ void CustomController::updateCommand()
         }
     }
     else if (cmd_mode_ == 1) {
-        // if (walking_tick == 0){
-        //     lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
-        //     rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
-        //     lfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
-        //     rfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
+        if (walking_tick == 0){
+            lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
+            rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
+            lfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
+            rfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
 
-        //     current_step_number_ = 0;
-        //     planner_index_ = number_of_foot_step;
+            current_step_number_ = 0;
+            planner_index_ = number_of_foot_step;
 
-        //     for (int i = 0; i < number_of_foot_step; i++){
-        //         if (i == 0) phase_indicator_(i) = is_right_stance_first ? 1 : 0;
-        //         else phase_indicator_(i) = 1 - phase_indicator_(i-1);
+            for (int i = 0; i < number_of_foot_step; i++){
+                if (i == 0) phase_indicator_(i) = is_right_stance_first ? 1 : 0;
+                else phase_indicator_(i) = 1 - phase_indicator_(i-1);
 
-        //         foot_commands_(i, 2) = foot_commands_planner_(i, 2);
-        //         foot_commands_(i, 3) = foot_commands_planner_(i, 3);
-        //         foot_commands_(i, 4) = foot_commands_planner_(i, 4);
-        //         foot_commands_(i, 6) = foot_commands_planner_(i, 6);
-        //         foot_commands_(i, 7) = foot_commands_planner_(i, 7);
-        //         foot_commands_(i, 8) = foot_commands_planner_(i, 8);
-        //         t_total_(i) = floor((foot_commands_(i, 6) + foot_commands_(i, 7)*2) * hz_);
-        //     }
+                foot_commands_(i, 3) = foot_commands_planner_(i, 3);
+                foot_commands_(i, 4) = foot_commands_planner_(i, 4);
+                foot_commands_(i, 6) = foot_commands_planner_(i, 6);
+                foot_commands_(i, 7) = foot_commands_planner_(i, 7);
+                foot_commands_(i, 8) = foot_commands_planner_(i, 8);
+                t_total_(i) = floor((foot_commands_(i, 6) + foot_commands_(i, 7)*2) * hz_);
+            }
 
-        //     // global foothold → local stance frame
-        //     Eigen::Vector3d &stance = is_right_stance_first ? rfoot_global_state_ : lfoot_global_state_;
-        //     double x_len = foot_commands_planner_(0, 0) - stance(0);
-        //     double y_len = foot_commands_planner_(0, 1) - stance(1);
-        //     foot_commands_(0, 0) = cos(-stance(2))*x_len - sin(-stance(2))*y_len;
-        //     foot_commands_(0, 1) = sin(-stance(2))*x_len + cos(-stance(2))*y_len;
-        //     foot_commands_(0, 5) = foot_commands_planner_(0, 5) - stance(2);
+            // global foothold → local stance frame
+            Eigen::Vector3d &stance = is_right_stance_first ? rfoot_global_state_ : lfoot_global_state_;
+            double x_len = foot_commands_planner_(0, 0) - stance(0);
+            double y_len = foot_commands_planner_(0, 1) - stance(1);
+            foot_commands_(0, 0) = cos(-stance(2))*x_len - sin(-stance(2))*y_len;
+            foot_commands_(0, 1) = sin(-stance(2))*x_len + cos(-stance(2))*y_len;
+            foot_commands_(0, 2) = foot_commands_planner_(0, 2);
+            foot_commands_(0, 5) = foot_commands_planner_(0, 5) - stance(2);
 
-        //     for (int i = 1; i < number_of_foot_step; i++){
-        //         x_len = foot_commands_planner_(i, 0) - foot_commands_planner_(i-1, 0);
-        //         y_len = foot_commands_planner_(i, 1) - foot_commands_planner_(i-1, 1);
-        //         foot_commands_(i, 0) = cos(-foot_commands_planner_(i-1, 5))*x_len - sin(-foot_commands_planner_(i-1, 5))*y_len;
-        //         foot_commands_(i, 1) = sin(-foot_commands_planner_(i-1, 5))*x_len + cos(-foot_commands_planner_(i-1, 5))*y_len;
-        //         foot_commands_(i, 5) = foot_commands_planner_(i, 5) - foot_commands_planner_(i-1, 5);
-        //     }
-        //     // print first foot commands
-        //     cout << "First foot commands: " << foot_commands_.row(0) << endl;
-        // }
-        // else if (walking_tick > t_total_(0)){
-        //     cout << "================================================" << endl;
-        //     Vector3d swing_pos = swing_state_stance_.translation();
-        //     cout << "Foot Position Error  : " << sqrt(pow(swing_pos(0) - foot_commands_(0, 0), 2) + pow(swing_pos(1) - foot_commands_(0, 1), 2)) << " [m]" << endl;
-        //     cout << ">> X error : " << abs(swing_pos(0) - foot_commands_(0, 0)) << " [m]" << endl;
-        //     cout << ">> Y error : " << abs(swing_pos(1) - foot_commands_(0, 1)) << " [m]" << endl;
-        //     double swing_yaw = DyrosMath::rot2Euler(swing_state_stance_.linear())(2);
-        //     cout << "Foot Yaw error : " << abs(wrap_to_pi(swing_yaw - foot_commands_(0, 5))) << " [rad]" << endl;
+            for (int i = 1; i < number_of_foot_step; i++){
+                x_len = foot_commands_planner_(i, 0) - foot_commands_planner_(i-1, 0);
+                y_len = foot_commands_planner_(i, 1) - foot_commands_planner_(i-1, 1);
+                foot_commands_(i, 0) = cos(-foot_commands_planner_(i-1, 5))*x_len - sin(-foot_commands_planner_(i-1, 5))*y_len;
+                foot_commands_(i, 1) = sin(-foot_commands_planner_(i-1, 5))*x_len + cos(-foot_commands_planner_(i-1, 5))*y_len;
+                foot_commands_(i, 2) = foot_commands_planner_(i, 2) - foot_commands_planner_(i-1, 2);
+                foot_commands_(i, 5) = foot_commands_planner_(i, 5) - foot_commands_planner_(i-1, 5);
+            }
+        }
+        else if (walking_tick > t_total_(0)){
+            cout << "================================================" << endl;
+            cout << "Foot Position Error  : " << swing_state_stance_.translation().transpose() - foot_commands_.row(0).segment(0, 3) << endl;
+            // Vector3d swing_pos = swing_state_stance_.translation();
+            // double swing_yaw = DyrosMath::rot2Euler(swing_state_stance_.linear())(2);
+            // cout << "Foot Position Error  : " << sqrt(pow(swing_pos(0) - foot_commands_(0, 0), 2) + pow(swing_pos(1) - foot_commands_(0, 1), 2)) << " [m]" << endl;
+            // cout << ">> X error : " << (swing_pos(0) - foot_commands_(0, 0)) << " [m]" << endl;
+            // cout << ">> Y error : " << (swing_pos(1) - foot_commands_(0, 1)) << " [m]" << endl;
+            // cout << "Foot Yaw error : " << (wrap_to_pi(swing_yaw - foot_commands_(0, 5))) << " [rad]" << endl;
 
-        //     lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
-        //     rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
-        //     lfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
-        //     rfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
+            foot_commands_.block(0, 0, number_of_foot_step - 1, 9) = foot_commands_.block(1, 0, number_of_foot_step - 1, 9);
+            phase_indicator_.segment(0, number_of_foot_step - 1) = phase_indicator_.segment(1, number_of_foot_step - 1);
+            phase_indicator_(number_of_foot_step - 1) = 1 - phase_indicator_(number_of_foot_step - 2);
+            t_total_.segment(0, number_of_foot_step - 1) = t_total_.segment(1, number_of_foot_step - 1);
 
-        //     foot_commands_.block(0, 0, number_of_foot_step - 1, 9) = foot_commands_.block(1, 0, number_of_foot_step - 1, 9);
-        //     phase_indicator_.segment(0, number_of_foot_step - 1) = phase_indicator_.segment(1, number_of_foot_step - 1);
-        //     phase_indicator_(number_of_foot_step - 1) = 1 - phase_indicator_(number_of_foot_step - 2);
-        //     t_total_.segment(0, number_of_foot_step - 1) = t_total_.segment(1, number_of_foot_step - 1);
+            planner_index_++;
+            current_step_number_++;
+            walking_tick = 0;
 
-        //     planner_index_++;
-        //     current_step_number_++;
-        //     walking_tick = 0;
+            if (current_step_number_ < number_of_planner_step) {
+                Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state_ : lfoot_global_state_;
+                double x_len = foot_commands_planner_(current_step_number_, 0) - stance(0);
+                double y_len = foot_commands_planner_(current_step_number_, 1) - stance(1);
 
-        //     if (current_step_number_ < number_of_planner_step) {
-        //         Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state_ : lfoot_global_state_;
-        //         double x_len = foot_commands_planner_(current_step_number_, 0) - stance(0);
-        //         double y_len = foot_commands_planner_(current_step_number_, 1) - stance(1);
+                foot_commands_(0, 0) = cos(-stance(2))*x_len - sin(-stance(2))*y_len;
+                foot_commands_(0, 1) = sin(-stance(2))*x_len + cos(-stance(2))*y_len;
+                foot_commands_(0, 2) = foot_commands_planner_(current_step_number_, 2) - foot_commands_planner_(current_step_number_-1, 2);
+                foot_commands_(0, 3) = foot_commands_planner_(current_step_number_, 3);
+                foot_commands_(0, 4) = foot_commands_planner_(current_step_number_, 4);
+                foot_commands_(0, 5) = foot_commands_planner_(current_step_number_, 5) - stance(2);
+                foot_commands_(0, 6) = foot_commands_planner_(current_step_number_, 6);
+                foot_commands_(0, 7) = foot_commands_planner_(current_step_number_, 7);
+                foot_commands_(0, 8) = foot_commands_planner_(current_step_number_, 8);
+                t_total_(0) = floor((foot_commands_(0, 6) + foot_commands_(0, 7)*2) * hz_);
 
-        //         foot_commands_(0, 0) = cos(-stance(2))*x_len - sin(-stance(2))*y_len;
-        //         foot_commands_(0, 1) = sin(-stance(2))*x_len + cos(-stance(2))*y_len;
-        //         foot_commands_(0, 2) = foot_commands_planner_(current_step_number_, 2);
-        //         foot_commands_(0, 3) = foot_commands_planner_(current_step_number_, 3);
-        //         foot_commands_(0, 4) = foot_commands_planner_(current_step_number_, 4);
-        //         foot_commands_(0, 5) = foot_commands_planner_(current_step_number_, 5) - stance(2);
-        //         foot_commands_(0, 6) = foot_commands_planner_(current_step_number_, 6);
-        //         foot_commands_(0, 7) = foot_commands_planner_(current_step_number_, 7);
-        //         foot_commands_(0, 8) = foot_commands_planner_(current_step_number_, 8);
-        //         t_total_(0) = floor((foot_commands_(0, 6) + foot_commands_(0, 7)*2) * hz_);
-
-        //         for (int step = 1; step < number_of_foot_step; step++){
-        //             int planned_idx = step + current_step_number_;
-        //             if (planned_idx < number_of_planner_step){
-        //                 x_len = foot_commands_planner_(planned_idx, 0) - foot_commands_planner_(planned_idx-1, 0);
-        //                 y_len = foot_commands_planner_(planned_idx, 1) - foot_commands_planner_(planned_idx-1, 1);
-        //                 foot_commands_(step, 0) = cos(-foot_commands_planner_(planned_idx-1, 5))*x_len - sin(-foot_commands_planner_(planned_idx-1, 5))*y_len;
-        //                 foot_commands_(step, 1) = sin(-foot_commands_planner_(planned_idx-1, 5))*x_len + cos(-foot_commands_planner_(planned_idx-1, 5))*y_len;
-        //                 foot_commands_(step, 2) = foot_commands_planner_(planned_idx, 2);
-        //                 foot_commands_(step, 3) = foot_commands_planner_(planned_idx, 3);
-        //                 foot_commands_(step, 4) = foot_commands_planner_(planned_idx, 4);
-        //                 foot_commands_(step, 5) = foot_commands_planner_(planned_idx, 5) - foot_commands_planner_(planned_idx-1, 5);
-        //                 foot_commands_(step, 6) = foot_commands_planner_(planned_idx, 6);
-        //                 foot_commands_(step, 7) = foot_commands_planner_(planned_idx, 7);
-        //                 foot_commands_(step, 8) = foot_commands_planner_(planned_idx, 8);
-        //                 t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
-        //             }
-        //             else {
-        //                 foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
-        //                 if (phase_indicator_(step) == 0) foot_commands_(step, 1) *= -1;
-        //                 t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
-        //             }
-        //         }
-        //     }
-        //     else {
-        //         int step = number_of_foot_step - 1;
-        //         foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
-        //         if (phase_indicator_(step) == 0) foot_commands_(step, 1) *= -1;
-        //         t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
-        //     }
-        // }
+                for (int step = 1; step < number_of_foot_step; step++){
+                    int planned_idx = step + current_step_number_;
+                    if (planned_idx < number_of_planner_step){
+                        x_len = foot_commands_planner_(planned_idx, 0) - foot_commands_planner_(planned_idx-1, 0);
+                        y_len = foot_commands_planner_(planned_idx, 1) - foot_commands_planner_(planned_idx-1, 1);
+                        foot_commands_(step, 0) = cos(-foot_commands_planner_(planned_idx-1, 5))*x_len - sin(-foot_commands_planner_(planned_idx-1, 5))*y_len;
+                        foot_commands_(step, 1) = sin(-foot_commands_planner_(planned_idx-1, 5))*x_len + cos(-foot_commands_planner_(planned_idx-1, 5))*y_len;
+                        foot_commands_(step, 2) = foot_commands_planner_(planned_idx, 2) - foot_commands_planner_(planned_idx-1, 2);
+                        foot_commands_(step, 3) = foot_commands_planner_(planned_idx, 3);
+                        foot_commands_(step, 4) = foot_commands_planner_(planned_idx, 4);
+                        foot_commands_(step, 5) = foot_commands_planner_(planned_idx, 5) - foot_commands_planner_(planned_idx-1, 5);
+                        foot_commands_(step, 6) = foot_commands_planner_(planned_idx, 6);
+                        foot_commands_(step, 7) = foot_commands_planner_(planned_idx, 7);
+                        foot_commands_(step, 8) = foot_commands_planner_(planned_idx, 8);
+                        t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
+                    }
+                    else {
+                        foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
+                        if (phase_indicator_(step) == 0) foot_commands_(step, 1) *= -1;
+                        t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
+                    }
+                }
+            }
+            else {
+                int step = number_of_foot_step - 1;
+                foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
+                if (phase_indicator_(step) == 0) foot_commands_(step, 1) *= -1;
+                t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
+            }
+        }
     }
 }
 
@@ -641,6 +650,10 @@ void CustomController::updateRobotStates()
     pelvis_state_global_.linear() = rd_cc_.link_[Pelvis].rotm;
     com_pos_state_global_ = rd_cc_.link_[COM_id].xpos;
     com_vel_state_global_ = rd_cc_.link_[COM_id].v;
+    lfoot_global_current_.translation() = rd_cc_.link_[Left_Foot].xpos;
+    lfoot_global_current_.linear() = rd_cc_.link_[Left_Foot].rotm;
+    rfoot_global_current_.translation() = rd_cc_.link_[Right_Foot].xpos;
+    rfoot_global_current_.linear() = rd_cc_.link_[Right_Foot].rotm;
 
     if (phase_indicator_(0) == 0) {
         stance_foot_state_global_.translation() = rd_cc_.link_[Left_Foot].xpos;
@@ -660,6 +673,18 @@ void CustomController::updateRobotStates()
     com_pos_state_stance_ = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(stance_foot_state_global_), com_pos_state_global_);
     com_vel_state_stance_ = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(stance_foot_state_global_), com_vel_state_global_);
     swing_state_stance_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * swing_foot_state_global_;
+
+    // Compute Global Foot States, estimates
+    lfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * lfoot_global_current_;
+    rfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * rfoot_global_current_;
+    Eigen::Vector3d &stance = (phase_indicator_(0)) ? rfoot_global_state_ : lfoot_global_state_;
+    Eigen::Vector3d &swing = (phase_indicator_(0)) ? lfoot_global_state_ : rfoot_global_state_;
+    Eigen::Isometry3d &swing_stance = (phase_indicator_(0)) ? lfoot_support_current_ : rfoot_support_current_;
+    
+    double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
+    swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
+    swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
+    swing(2) = stance(2) + swing_yaw_stance;
 }
 
 void CustomController::generateVRP()
@@ -723,7 +748,7 @@ void CustomController::generateVRP()
     update_preview_state.row(0) = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(stance_foot_state_global_), target_com_state_global_.segment(0, 3));
     update_preview_state.row(1) = DyrosMath::inverseIsometry3d(stance_foot_state_global_).linear() * target_com_state_global_.segment(3, 3);
     update_preview_state.row(2) = DyrosMath::inverseIsometry3d(stance_foot_state_global_).linear() * target_com_state_global_.segment(6, 3);
-    preview_ctrl_.update_state(update_preview_state);
+    preview_ctrl_->update_state(update_preview_state);
 
     // update for foot trajectory
     swing_foot_start_pos_stance_ = swing_state_stance_.translation();
@@ -780,7 +805,7 @@ void CustomController::oneStepVRP(int step, Eigen::MatrixXd &vrp_temp_, Eigen::V
 
 void CustomController::generateCoM()
 {
-    MatrixXd preview_output = preview_ctrl_.compute_target_state(vrp_ref_.block(walking_tick, 0, preview_horizon_, 3));
+    MatrixXd preview_output = preview_ctrl_->compute_target_state(vrp_ref_.block(walking_tick, 0, preview_horizon_, 3));
     target_com_state_stance_.segment(0, 3) = preview_output.row(0);
     target_com_state_stance_.segment(3, 3) = preview_output.row(1);
     target_com_state_stance_.segment(6, 3) = preview_output.row(2);

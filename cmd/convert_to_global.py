@@ -2,6 +2,7 @@ import argparse
 import csv
 import math
 import os
+import importlib.util
 
 INPUT_CSV = os.path.join(os.path.dirname(__file__), "command.csv")
 OUTPUT_CSV = os.path.join(os.path.dirname(__file__), "global_command.csv")
@@ -101,12 +102,22 @@ if __name__ == "__main__":
 
     data = read_command_csv(INPUT_CSV)
     if not is_left_swing_first: # right foot swing first -> right foot swing command y, yaw should be negative (only for odd number of steps)
-        for i in range(0, len(data["posx"])-1, 2):
+        for i in range(0, len(data["posx"]), 2):
             data["posy"][i] *= -1
-            data["roty"][i] *= -1
+            # data["roty"][i] *= -1
     global_x, global_y, global_z, global_roty = to_global(data)
     write_global_csv(OUTPUT_CSV, global_x, global_y, global_z, global_roty, data)
 
     print("Global positions:")
     for i, (x, y, z, ry) in enumerate(zip(global_x, global_y, global_z, global_roty)):
         print(f"  step {i:2d}: x={x:.4f}  y={y:.4f}  z={z:.4f}  roty={math.degrees(ry):.2f}deg")
+
+    # footstep 개수에 맞게 stair_simulation_scene.xml 재생성
+    n_steps = len(global_x)
+    spec = importlib.util.spec_from_file_location(
+        "gen_scene", os.path.join(os.path.dirname(__file__), "gen_scene.py")
+    )
+    gen = importlib.util.module_from_spec(spec)
+    import sys as _sys
+    _sys.argv = ["gen_scene.py", str(n_steps)]
+    spec.loader.exec_module(gen)
