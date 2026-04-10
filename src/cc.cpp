@@ -2,11 +2,10 @@
 
 using namespace TOCABI;
 
-void loadConfig(const std::string& path, bool& is_on_robot, bool& write_file, std::string& weight, std::string& cmd, int& cmd_mode, int& policy_mode, double& hz, double& preview_height)
+void loadConfig(const std::string& path, bool& write_file, std::string& weight, std::string& cmd, int& cmd_mode, int& policy_mode, double& hz, double& preview_height)
 {
     try {
         YAML::Node cfg = YAML::LoadFile(path);
-        if (cfg["is_on_robot"]) is_on_robot = cfg["is_on_robot"].as<bool>();
         if (cfg["write_file"]) write_file = cfg["write_file"].as<bool>();
         if (cfg["weight"]) weight = cfg["weight"].as<std::string>();
         if (cfg["cmd"]) cmd = cfg["cmd"].as<std::string>();
@@ -27,8 +26,10 @@ CustomController::CustomController(RobotData &rd)
         memory_info(Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)),
         session(nullptr)
 {
-    const std::string cfg_path = workspace_dir_ + "config/tocabi_cc.yaml";
-    loadConfig(cfg_path, is_on_robot_, write_file_, weight_file_, cmd_file_, cmd_mode_, policy_mode, hz_, vrp_height_);
+    std::string cfg_path = workspace_dir_ + "config/tocabi_cc.yaml";
+    if (is_on_robot_)
+        cfg_path = "/home/dyros/catkin_ws/src/tocabi_cc/config/tocabi_cc.yaml";
+    loadConfig(cfg_path, write_file_, weight_file_, cmd_file_, cmd_mode_, policy_mode, hz_, vrp_height_);
     writeFile.open("/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
     if (is_on_robot_)
         writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
@@ -356,6 +357,7 @@ void CustomController::feedforwardPolicy()
     // output tensor to rl_action_
     for (size_t i = 0; i < num_actuator_action; i++) {
         rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
+        rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
     // output tensor to value_
     // value_ = output_tensors[1].GetTensorMutableData<float>()[0];
@@ -633,7 +635,8 @@ void CustomController::updateCommand()
                         t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
                     }
                 }
-            }
+                cout << "Next Foot Commands   : " << foot_commands_.row(0).segment(0, 3) << endl;
+        }
             else {
                 int step = number_of_foot_step - 1;
                 foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
@@ -715,6 +718,9 @@ void CustomController::generateVRP()
     target_swing_foot_state_first_stance_(0, 2) = target_stance_foot_state_first_stance_(0, 2) + foot_commands_(0, 2);
     target_swing_foot_state_first_stance_(0, 3) = target_stance_foot_state_first_stance_(0, 3) + foot_commands_(0, 5); // yaw
 
+    const double vrpx_offset = 0.03;
+    const double vrpy_offset = 0.02;
+
     for (unsigned int step = 1; step < number_of_foot_step; step++) {
         target_stance_foot_state_first_stance_.row(step) = target_swing_foot_state_first_stance_.row(step-1);
         target_swing_foot_state_first_stance_(step, 0) =  target_stance_foot_state_first_stance_(step, 0)
@@ -725,6 +731,18 @@ void CustomController::generateVRP()
                                                         + foot_commands_(step, 1) * cos(target_stance_foot_state_first_stance_(step, 3));
         target_swing_foot_state_first_stance_(step, 2) = target_stance_foot_state_first_stance_(step, 2) + foot_commands_(step, 2);
         target_swing_foot_state_first_stance_(step, 3) = target_stance_foot_state_first_stance_(step, 3) + foot_commands_(step, 5);
+    }
+    for (unsigned int step = 0; step < number_of_foot_step; step++) {
+        const double stance_yaw = target_stance_foot_state_first_stance_(step, 3);
+        const double phase_indicator = copysign(1.0, foot_commands_(step, 1));
+        target_stance_foot_state_first_stance_(step, 0) -= phase_indicator * vrpy_offset * sin(stance_yaw);
+        target_stance_foot_state_first_stance_(step, 1) += phase_indicator * vrpy_offset * cos(stance_yaw);
+        target_stance_foot_state_first_stance_(step, 0) += vrpx_offset * cos(stance_yaw);
+        target_stance_foot_state_first_stance_(step, 1) += vrpx_offset * sin(stance_yaw);
+        target_swing_foot_state_first_stance_(step, 0) -= -phase_indicator * vrpy_offset * sin(stance_yaw);
+        target_swing_foot_state_first_stance_(step, 1) += -phase_indicator * vrpy_offset * cos(stance_yaw);
+        target_swing_foot_state_first_stance_(step, 0) += vrpx_offset * cos(stance_yaw);
+        target_swing_foot_state_first_stance_(step, 1) += vrpx_offset * sin(stance_yaw);
     }
 
 
@@ -816,6 +834,7 @@ void CustomController::generateCoM()
 
     // target_pelvis_stance_.translation() = pelvis_state_stance_.translation() + 0.7 * (target_com_state_stance_.segment(0, 3) - com_pos_state_stance_);
     target_pelvis_stance_.translation() = target_com_state_stance_.segment(0, 3);
+    target_pelvis_stance_.translation()(2) += 0.04;
     target_pelvis_stance_.linear() = DyrosMath::rotateWithZ(com_yaw_ref_(walking_tick));
 }
 

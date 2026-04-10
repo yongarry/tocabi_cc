@@ -57,7 +57,7 @@ xml = f"""<mujoco model="scene">
 
     <worldbody>
         <!-- mocap body: m->body_pos / m->body_quat 으로 런타임 위치 제어 -->
-        <geom name="startterrain" type="box" pos="0. 0. -0.05" size="0.15 0.2 0.05" rgba="0.2 0.5 0.2 1"/>
+        <geom name="startterrain" type="box" pos="0.1 0. -0.05" size="0.15 0.2 0.05" rgba="0.2 0.5 0.2 1"/>
 
 {cubes}
 
