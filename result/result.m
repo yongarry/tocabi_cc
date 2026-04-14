@@ -1,4 +1,5 @@
-data = importdata("log.txt");
+% data = importdata("log.txt");
+data = importdata("test/exp5-lcp20.txt");
 
 vrp = data(:, [1,2,3]);
 com_des = data(:, [4,5,6]);

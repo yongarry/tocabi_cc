@@ -1,7 +1,8 @@
 write_file: true
-weight: "policy3d-lcp20.onnx"
-cmd: "global_command.csv"
-cmd_mode: 1 # 0: local, 1: global
+weight: "policy3d-lcp20-earlytd.onnx"
+# cmd: "global_command.csv"
+cmd: "command.csv"
+cmd_mode: 0 # 0: local, 1: global
 policy_mode: 0 # 0: torque control, 1: position control
 hz: 125 # Hz
 preview_height: 0.728

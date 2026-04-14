@@ -859,7 +859,7 @@ void CustomController::generateFeet()
 
         // for z, divide it to 3 phases(lift up, maintain, lift down)
         double lift_up_time = t_ssp * 0.2;
-        double maintain_time = t_ssp * 0.7;
+        double maintain_time = t_ssp * 0.5;
 
         double lift_up_height = 0.0;
         if (swing_foot_start_pos_stance_(2) < swing_foot_end_pos_stance_(2)) 
