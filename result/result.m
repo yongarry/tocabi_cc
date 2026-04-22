@@ -1,5 +1,7 @@
-% data = importdata("log.txt");
-data = importdata("test/exp5-lcp20.txt");
+data_ = importdata("log.txt");
+
+obs = data_(:, [1:54]);
+data = data_(:, [55:end]);
 
 vrp = data(:, [1,2,3]);
 com_des = data(:, [4,5,6]);
@@ -10,6 +12,7 @@ q_des = data(:, [16:21]);
 action_q = data(:, [22:27]);
 q_ = data(:, [28:33]);
 
+%% com trajectory plot
 fig = figure;
 for index = 1:3
     subplot(3,1,index);
@@ -20,6 +23,7 @@ for index = 1:3
     hold off;
 end
 
+%% joint trajectory plot
 fig1 = figure;
 for index = 1:6
    subplot(3,2,index);
@@ -33,13 +37,51 @@ for index = 1:6
     ylabel('Value');
     ylim([-1.5,2.0])
 end
-fig2 = figure;
-plot(data(:,[34:39]));
-legend;
 
+%% torque trajectory plot
+fig2 = figure;
+for index = 1:6
+    subplot(3,2,index);
+    plot(data(:, [33+index]));
+    legend;
+end
+
+%% foot trajectory plot 
 fig3 = figure;
 for index = 1:3
     subplot(1,3,index);
     plot(data(:,[39+index, 42+index]));
+    if (index == 3)
+        ylim([-0.5,0.5]);
+    end
     legend;
 end
+
+%% etc
+% fig4 = figure;
+% for index = 0:1
+%     subplot(2,1,index+1);
+%     plot(data(:,[40+index*3+2,49+index*3+2]));
+%     legend;
+%     grid on;
+% end
+
+%% obs traj plot
+fig5 = figure;
+subplot(3,2,1);
+plot(obs(:,[1:3]));
+
+subplot(3,2,2);
+plot(obs(:,[4:6]));
+
+subplot(3,2,3);
+plot(obs(:,[7:9]));
+
+subplot(3,2,4);
+plot(obs(:,[10:21]));
+
+subplot(3,2,5);
+plot(obs(:,[22:33]));
+
+subplot(3,2,6);
+plot(obs(:,[34:45]));

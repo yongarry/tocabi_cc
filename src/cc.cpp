@@ -137,12 +137,15 @@ void CustomController::loadNetwork()
 void CustomController::initVariable()
 {    
     rl_action_.resize(num_actuator_action, 1);
+    rl_action_lpf_.setZero();
 
     state_.resize(num_state, 0);
     state_cur_.resize(num_cur_state, 0);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 0);
 
     q_dot_lpf_.setZero();
+    base_lin_vel_lpf_.setZero();
+    base_ang_vel_lpf_.setZero();
 
     torque_bound_ << 333, 232, 263, 289, 222, 166,
                     333, 232, 263, 289, 222, 166,
@@ -186,6 +189,8 @@ void CustomController::initVariable()
     target_com_state_stance_.setZero(9);
     target_com_state_global_.setZero(9);
     target_com_state_global_.segment(0, 3) = rd_cc_.link_[COM_id].xpos;
+
+    initBias();
 }
 
 void CustomController::loadCommands()
@@ -273,6 +278,27 @@ void CustomController::processNoise()
         // q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
         // q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
     }
+    {
+        Eigen::Quaterniond q_base;
+        q_base.x() = rd_cc_.q_virtual_(3);
+        q_base.y() = rd_cc_.q_virtual_(4);
+        q_base.z() = rd_cc_.q_virtual_(5);
+        q_base.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL - 1);
+
+        const Vector3d base_lin_vel_raw = q_base.conjugate() * (rd_cc_.q_dot_virtual_.segment(0, 3));
+        const Vector3d base_ang_vel_raw = q_base.conjugate() * (rd_cc_.q_dot_virtual_.segment(3, 3));
+        if (time_cur_ - time_pre_ > 0.0)
+        {
+            const double fs = 1.0 / (time_cur_ - time_pre_);
+            base_lin_vel_lpf_ = DyrosMath::lpf<3>(base_lin_vel_raw, base_lin_vel_lpf_, fs, 4.0);
+            base_ang_vel_lpf_ = DyrosMath::lpf<3>(base_ang_vel_raw, base_ang_vel_lpf_, fs, 4.0);
+        }
+        else
+        {
+            base_lin_vel_lpf_ = base_lin_vel_lpf_;
+            base_ang_vel_lpf_ = base_ang_vel_lpf_;
+        }
+    }
     time_pre_ = time_cur_;
 }
 
@@ -286,9 +312,11 @@ void CustomController::processObservation()
     q.z() = rd_cc_.q_virtual_(5);
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);   
     
-    // 1. base lin vel, ang vel
+    // 1. base lin vel, ang vel (LPF updated in processNoise)
+    // Vector3d base_lin_vel = base_lin_vel_lpf_;
+    // Vector3d base_ang_vel = base_ang_vel_lpf_;
     Vector3d base_lin_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(0,3));
-    Vector3d base_ang_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(3,3));
+    Vector3d base_ang_vel = (rd_cc_.q_dot_virtual_.segment(3,3));
 
     for (int i = 0; i < 3; i++)
         state_cur_[data_idx++] = base_lin_vel(i);
@@ -334,6 +362,24 @@ void CustomController::processObservation()
     for (int i = 0; i <num_actuator_action; i++) 
         state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
 
+    for (int i = 0; i < 3; i++)
+        writeFile << base_lin_vel(i) << "\t";
+    for (int i = 0; i < 3; i++)
+        writeFile << base_ang_vel(i) << "\t";
+    for (int i = 0; i < 3; i++)
+        writeFile << projected_grav(i) << "\t";
+    for (int i = 0; i < num_actuator_action; i++)
+        writeFile << q_noise_(i) << "\t";
+    for (int i = 0; i < num_actuator_action; i++)
+        writeFile << q_vel_noise_(i) << "\t";
+    for (int i = 0; i < num_actuator_action; i++)
+        writeFile << q_leg_desired_(i) << "\t";
+    for (int i = 0; i < 9; i++)
+        writeFile << foot_commands_(0, i) << "\t";
+    // for (int i = 0; i < num_actuator_action; i++)
+    //     writeFile << DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0) << "\t";
+    // writeFile << endl;
+    
     std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
     std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*(num_state_skip*num_state_hist-1));
 
@@ -355,10 +401,17 @@ void CustomController::feedforwardPolicy()
         }
     }
     // output tensor to rl_action_
+    Vector12d rl_cut;
     for (size_t i = 0; i < num_actuator_action; i++) {
-        rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
-        rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
+        // rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
+        // rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
+        rl_cut(i) = output_tensors[0].GetTensorMutableData<float>()[i];
+        rl_cut(i) = DyrosMath::minmax_cut(rl_cut(i), -1.0, 1.0);
     }
+    rl_action_lpf_ = DyrosMath::lpf<num_actuator_action>(rl_cut, rl_action_lpf_, hz_, 10.0);
+    for (size_t i = 0; i < num_actuator_action; i++)
+        rl_action_(i) = rl_action_lpf_(i);
+
     // output tensor to value_
     // value_ = output_tensors[1].GetTensorMutableData<float>()[0];
 }
@@ -397,14 +450,14 @@ void CustomController::computeSlow()
             generateFeet();
             getTargetJointPos();
             processNoise();
-            // processBias();
+            processBias();
             processObservation();
             for (int i = 0; i < num_state_skip*num_state_hist; i++) 
                 std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*i);
             feedforwardPolicy();
         }
         processNoise();
-        // processBias();
+        processBias();
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/hz_) // 125 is the control frequency
         {
             if (walking_tick > t_total_(0))
@@ -441,6 +494,17 @@ void CustomController::computeSlow()
                     writeFile << lfoot_global_state_(i) << "\t";
                 for (int i = 0; i < 3; i++)
                     writeFile << rfoot_global_state_(i) << "\t";
+                // for (int i = 0; i < 2; i++)
+                //     writeFile << rd_cc_.link_[Pelvis].xpos(i) << "\t";
+                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Pelvis].rotm)(2) << "\t";
+                // for (int i = 0; i < 2; i++)
+                //     writeFile << rd_cc_.link_[Left_Foot].xpos(i) << "\t";
+                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2) << "\t";
+                // for (int i = 0; i < 2; i++)
+                //     writeFile << rd_cc_.link_[Right_Foot].xpos(i) << "\t";
+                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2) << "\t";
+                // for (int i = 0; i < 9; i++)
+                //     writeFile << foot_commands_(0, i) << "\t";
                 writeFile << endl;
             }
 
@@ -468,8 +532,10 @@ void CustomController::computeSlow()
             // torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
             if (policy_mode == 0)
                 torque_rl_(i) = rl_action_(i)*torque_bound_(i);
-            else
-                torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i) + rl_action_(i)*torque_bound_(i);
+            else{
+                // torque_rl_(i) = kp_(i,i) * (q_leg_desired_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i) + rl_action_(i)*torque_bound_(i);
+                torque_rl_(i) = kp_(i,i) * (rl_action_(i) + q_init_(i) - q_noise_(i)) - kv_(i,i) * q_vel_noise_(i);
+            }
         }
 
         for (int i = num_actuator_action; i < MODEL_DOF; i++)
@@ -509,18 +575,19 @@ void CustomController::updateCommand()
             else phase_indicator_(0) = 0;
             t_total_(0) = floor((foot_commands_(0, 6) + foot_commands_(0, 7)*2) * hz_); // dsp + ssp + dsp 
             if (phase_indicator_(0) == 0) foot_commands_(0, 1) *= -1; // if left foot stance, y cmd should be negative
-            if (phase_indicator_(0) == 0) foot_commands_(0, 5) *= -1; // if left foot stance, yaw cmd should be negative
+            // if (phase_indicator_(0) == 0) foot_commands_(0, 5) *= -1; // if left foot stance, yaw cmd should be negative
 
             for (int i = 1; i < number_of_foot_step; i++){
                 phase_indicator_(i) = 1 - phase_indicator_(i-1);
                 t_total_(i) = floor((foot_commands_(i, 6) + foot_commands_(i, 7)*2) * hz_); // dsp + ssp + dsp 
                 if (phase_indicator_(i) == 0) foot_commands_(i, 1) *= -1; // if left foot stance, y cmd should be negative
-                if (phase_indicator_(i) == 0) foot_commands_(i, 5) *= -1; // if left foot stance, yaw cmd should be negative
+                // if (phase_indicator_(i) == 0) foot_commands_(i, 5) *= -1; // if left foot stance, yaw cmd should be negative
             }
         }
         else if (walking_tick > t_total_(0)){
             cout << "================================================" << endl;
             cout << "Foot Position Error  : " << swing_state_stance_.translation().transpose() - foot_commands_.row(0).segment(0, 3) << endl;
+            cout << "Next Foot Commands   : " << foot_commands_.row(0).segment(0, 3) << "\t" << foot_commands_.row(0)(5) << endl;
 
             foot_commands_.block(0, 0, number_of_foot_step - 1, 9) = foot_commands_.block(1, 0, number_of_foot_step - 1, 9);
             if (planner_index_ < number_of_planner_step) 
@@ -532,7 +599,7 @@ void CustomController::updateCommand()
             t_total_.segment(0, number_of_foot_step - 1) = t_total_.segment(1, number_of_foot_step - 1);
             t_total_(number_of_foot_step - 1) = floor((foot_commands_(number_of_foot_step - 1, 6) + foot_commands_(number_of_foot_step - 1, 7)*2) * hz_); // dsp + ssp + dsp 
             if (phase_indicator_(number_of_foot_step - 1) == 0) foot_commands_(number_of_foot_step - 1, 1) *= -1; // if left foot stance, y cmd should be negative
-            if (phase_indicator_(number_of_foot_step - 1) == 0) foot_commands_(number_of_foot_step - 1, 5) *= -1; // if left foot stance, yaw cmd should be negative
+            // if (phase_indicator_(number_of_foot_step - 1) == 0) foot_commands_(number_of_foot_step - 1, 5) *= -1; // if left foot stance, yaw cmd should be negative
 
             planner_index_++;
             walking_tick = 0;
@@ -598,6 +665,13 @@ void CustomController::updateCommand()
             walking_tick = 0;
 
             if (current_step_number_ < number_of_planner_step) {
+                // Vector3d lfoot_global_state__ = rd_cc_.link_[Left_Foot].xpos;
+                // Vector3d rfoot_global_state__ = rd_cc_.link_[Right_Foot].xpos;
+                // lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
+                // rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
+                // lfoot_global_state__(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
+                // rfoot_global_state__(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
+                // Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state__ : lfoot_global_state__;
                 Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state_ : lfoot_global_state_;
                 double x_len = foot_commands_planner_(current_step_number_, 0) - stance(0);
                 double y_len = foot_commands_planner_(current_step_number_, 1) - stance(1);
@@ -635,7 +709,7 @@ void CustomController::updateCommand()
                         t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
                     }
                 }
-                cout << "Next Foot Commands   : " << foot_commands_.row(0).segment(0, 3) << endl;
+                cout << "Next Foot Commands   : " << foot_commands_.row(0).segment(0, 3) << " " << foot_commands_.row(0)(5) << endl;
         }
             else {
                 int step = number_of_foot_step - 1;
@@ -687,6 +761,7 @@ void CustomController::updateRobotStates()
     double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
     swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
     swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
+    // stance(2) = DyrosMath::rot2Euler(stance_foot_state_global_.linear())(2);
     swing(2) = stance(2) + swing_yaw_stance;
 }
 
@@ -924,12 +999,10 @@ void CustomController::computeIkControl(const Eigen::Isometry3d &float_trunk_tra
     q_des(5) = atan2(L_r(1), L_r(2));                                                                                  // Ankle roll
     q_des(11) = atan2(R_r(1), R_r(2));
 
-
-    // L_alpha = asin(DyrosMath::minmax_cut(L_upper / L_C * sin(M_PI - q_des(3)), -0.99, 0.99) );
-    // R_alpha = asin(DyrosMath::minmax_cut(L_upper / R_C * sin(M_PI - q_des(9)), -0.99, 0.99));
-
-    L_alpha =asin( L_upper / L_C * sin(M_PI - q_des(3)));
-    R_alpha = asin(L_upper / R_C * sin(M_PI - q_des(9)));
+    L_alpha = asin(DyrosMath::minmax_cut(L_upper / L_C * sin(M_PI - q_des(3)), -0.99, 0.99));
+    R_alpha = asin(DyrosMath::minmax_cut(L_upper / R_C * sin(M_PI - q_des(9)), -0.99, 0.99));
+    // L_alpha =asin( L_upper / L_C * sin(M_PI - q_des(3)));
+    // R_alpha = asin(L_upper / R_C * sin(M_PI - q_des(9)));
     
     q_des(4) = -atan2(L_r(0), sqrt(pow(L_r(1), 2) + pow(L_r(2), 2))) - L_alpha;
     q_des(10) = -atan2(R_r(0), sqrt(pow(R_r(1), 2) + pow(R_r(2), 2))) - R_alpha;
@@ -967,26 +1040,26 @@ void CustomController::copyRobotData(RobotData &rd_l)
     std::memcpy(&rd_cc_, &rd_l, sizeof(RobotData));
 }
 
-// void CustomController::initBias()
-// {
-//     q_bias_.setZero();
-//     if (~is_on_robot_){
-//         std::random_device rd;  
-//         std::mt19937 gen(rd());
-//         float bias_std = 0.;
-//         std::uniform_real_distribution<> dis(-bias_std, bias_std);
-//         q_bias_(2) = dis(gen);
-//         q_bias_(3) = dis(gen);
-//         q_bias_(4) = dis(gen);
-//         q_bias_(8) = dis(gen);
-//         q_bias_(9) = dis(gen);
-//         q_bias_(10) = dis(gen);
-//     }
-// }
+void CustomController::initBias()
+{
+    q_bias_.setZero();
+    if (~is_on_robot_){
+        std::random_device rd;  
+        std::mt19937 gen(rd());
+        float bias_std = 0.;
+        std::uniform_real_distribution<> dis(-bias_std, bias_std);
+        q_bias_(2) = dis(gen);
+        q_bias_(3) = dis(gen);
+        q_bias_(4) = dis(gen);
+        q_bias_(8) = dis(gen);
+        q_bias_(9) = dis(gen);
+        q_bias_(10) = dis(gen);
+    }
+}
 
-// void CustomController::processBias()
-// {
-//     for (int i = 0; i < MODEL_DOF; i++){
-//         q_noise_(i) += q_bias_(i);
-//     }
-// }
+void CustomController::processBias()
+{
+    for (int i = 0; i < MODEL_DOF; i++){
+        q_noise_(i) += q_bias_(i);
+    }
+}
