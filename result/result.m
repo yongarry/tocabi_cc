@@ -50,13 +50,19 @@ end
 fig3 = figure;
 for index = 1:3
     subplot(1,3,index);
-    plot(data(:,[39+index, 42+index]));
-    if (index == 3)
-        ylim([-0.5,0.5]);
-    end
+    plot(data(:,[39+index, 42+index, 45+index, 48+index]));
+    % if (index == 3)
+    %     ylim([-0.5,0.5]);
+    % end
+    grid on;
+    xticks(0:126:1700);
     legend;
 end
-
+% index=2;
+% plot(data(:,[39+index, 42+index, 45+index, 48+index, 51+index, 54+index, 56+index]));
+% legend;
+% xticks(0:126:1600);
+% grid on;
 %% etc
 % fig4 = figure;
 % for index = 0:1

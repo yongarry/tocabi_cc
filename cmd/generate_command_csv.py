@@ -10,7 +10,7 @@ def repeated(value: str, count: int) -> list[str]:
 
 
 def build_rows(step_count: int) -> list[list[str]]:
-    posz_values = [f"{random.uniform(0., 0.):.4f}" for _ in range(step_count)]
+    posz_values = [f"{random.uniform(-0.1, 0.1):.2f}" for _ in range(step_count)]
     if step_count >= 1:
         posz_values[0] = "0.0"
     if step_count >= 2:
@@ -24,13 +24,13 @@ def build_rows(step_count: int) -> list[list[str]]:
 
     return [
         ["posx", *posx_values],
-        ["posy", *repeated("0.205", step_count)],
+        ["posy", *repeated("0.20", step_count)],
         ["posz", *posz_values],
         ["rotr", *repeated("0", step_count)],
         ["rotp", *repeated("0", step_count)],
-        ["roty", *repeated("0.1", step_count)],
-        ["tssp", *repeated("0.9", step_count)],
-        ["tdsp", *repeated("0.15", step_count)],
+        ["roty", *repeated("0.", step_count)],
+        ["tssp", *repeated("0.8", step_count)],
+        ["tdsp", *repeated("0.1", step_count)],
         ["foot", *repeated("0.1", step_count)],
     ]
 

@@ -1,5 +1,5 @@
 write_file: true
-weight: "policy3d-lcp20-adelay.onnx"
+weight: "policy3d-rlparam.onnx"
 cmd: "global_command.csv"
 # cmd: "command.csv"
 cmd_mode: 1 # 0: local, 1: global

@@ -74,7 +74,6 @@ public:
     int num_state = num_cur_state * num_state_hist;
 
     MatrixXd rl_action_;
-    Vector12d rl_action_lpf_;
     Vector12d q_lower_limit_, q_upper_limit_, q_target_;
 
     double value_;
@@ -83,8 +82,6 @@ public:
     float stop_start_time_;
     
     Eigen::Matrix<double, MODEL_DOF, 1> q_dot_lpf_;
-    Vector3d base_lin_vel_lpf_;
-    Vector3d base_ang_vel_lpf_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_init_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_;
     Eigen::Matrix<double, MODEL_DOF, 1> q_noise_pre_;
@@ -131,7 +128,6 @@ public:
 
     Vector3d lfoot_global_state_; // (x, y, yaw) in global frame
     Vector3d rfoot_global_state_;
-
 
     // VRP + Preview Control (initialized after hz_ is loaded from config)
     std::unique_ptr<PreviewController> preview_ctrl_;

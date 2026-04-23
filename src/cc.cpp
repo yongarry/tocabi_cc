@@ -137,15 +137,12 @@ void CustomController::loadNetwork()
 void CustomController::initVariable()
 {    
     rl_action_.resize(num_actuator_action, 1);
-    rl_action_lpf_.setZero();
 
     state_.resize(num_state, 0);
     state_cur_.resize(num_cur_state, 0);
     state_buffer_.resize(num_cur_state*num_state_skip*num_state_hist, 0);
 
     q_dot_lpf_.setZero();
-    base_lin_vel_lpf_.setZero();
-    base_ang_vel_lpf_.setZero();
 
     torque_bound_ << 333, 232, 263, 289, 222, 166,
                     333, 232, 263, 289, 222, 166,
@@ -278,27 +275,6 @@ void CustomController::processNoise()
         // q_noise_= rd_cc_.q_virtual_.segment(6,MODEL_DOF);
         // q_vel_noise_ = rd_cc_.q_dot_virtual_.segment(6,MODEL_DOF);
     }
-    {
-        Eigen::Quaterniond q_base;
-        q_base.x() = rd_cc_.q_virtual_(3);
-        q_base.y() = rd_cc_.q_virtual_(4);
-        q_base.z() = rd_cc_.q_virtual_(5);
-        q_base.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL - 1);
-
-        const Vector3d base_lin_vel_raw = q_base.conjugate() * (rd_cc_.q_dot_virtual_.segment(0, 3));
-        const Vector3d base_ang_vel_raw = q_base.conjugate() * (rd_cc_.q_dot_virtual_.segment(3, 3));
-        if (time_cur_ - time_pre_ > 0.0)
-        {
-            const double fs = 1.0 / (time_cur_ - time_pre_);
-            base_lin_vel_lpf_ = DyrosMath::lpf<3>(base_lin_vel_raw, base_lin_vel_lpf_, fs, 4.0);
-            base_ang_vel_lpf_ = DyrosMath::lpf<3>(base_ang_vel_raw, base_ang_vel_lpf_, fs, 4.0);
-        }
-        else
-        {
-            base_lin_vel_lpf_ = base_lin_vel_lpf_;
-            base_ang_vel_lpf_ = base_ang_vel_lpf_;
-        }
-    }
     time_pre_ = time_cur_;
 }
 
@@ -313,8 +289,6 @@ void CustomController::processObservation()
     q.w() = rd_cc_.q_virtual_(MODEL_DOF_QVIRTUAL-1);   
     
     // 1. base lin vel, ang vel (LPF updated in processNoise)
-    // Vector3d base_lin_vel = base_lin_vel_lpf_;
-    // Vector3d base_ang_vel = base_ang_vel_lpf_;
     Vector3d base_lin_vel = q.conjugate()*(rd_cc_.q_dot_virtual_.segment(0,3));
     Vector3d base_ang_vel = (rd_cc_.q_dot_virtual_.segment(3,3));
 
@@ -376,9 +350,6 @@ void CustomController::processObservation()
         writeFile << q_leg_desired_(i) << "\t";
     for (int i = 0; i < 9; i++)
         writeFile << foot_commands_(0, i) << "\t";
-    // for (int i = 0; i < num_actuator_action; i++)
-    //     writeFile << DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0) << "\t";
-    // writeFile << endl;
     
     std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
     std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*(num_state_skip*num_state_hist-1));
@@ -401,16 +372,10 @@ void CustomController::feedforwardPolicy()
         }
     }
     // output tensor to rl_action_
-    Vector12d rl_cut;
     for (size_t i = 0; i < num_actuator_action; i++) {
-        // rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
-        // rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
-        rl_cut(i) = output_tensors[0].GetTensorMutableData<float>()[i];
-        rl_cut(i) = DyrosMath::minmax_cut(rl_cut(i), -1.0, 1.0);
+        rl_action_(i) = output_tensors[0].GetTensorMutableData<float>()[i];
+        rl_action_(i) = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
     }
-    rl_action_lpf_ = DyrosMath::lpf<num_actuator_action>(rl_cut, rl_action_lpf_, hz_, 10.0);
-    for (size_t i = 0; i < num_actuator_action; i++)
-        rl_action_(i) = rl_action_lpf_(i);
 
     // output tensor to value_
     // value_ = output_tensors[1].GetTensorMutableData<float>()[0];
@@ -490,21 +455,18 @@ void CustomController::computeSlow()
                     writeFile << q_noise_(i) << "\t";
                 for (int i = 0; i < 6; i++)
                     writeFile << rd_.torque_desired(i) << "\t";
-                for (int i = 0; i < 3; i++)
-                    writeFile << lfoot_global_state_(i) << "\t";
-                for (int i = 0; i < 3; i++)
-                    writeFile << rfoot_global_state_(i) << "\t";
-                // for (int i = 0; i < 2; i++)
-                //     writeFile << rd_cc_.link_[Pelvis].xpos(i) << "\t";
-                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Pelvis].rotm)(2) << "\t";
-                // for (int i = 0; i < 2; i++)
-                //     writeFile << rd_cc_.link_[Left_Foot].xpos(i) << "\t";
-                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2) << "\t";
-                // for (int i = 0; i < 2; i++)
-                //     writeFile << rd_cc_.link_[Right_Foot].xpos(i) << "\t";
-                // writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2) << "\t";
-                // for (int i = 0; i < 9; i++)
-                //     writeFile << foot_commands_(0, i) << "\t";
+                for (int i = 0; i < 2; i++)
+                    writeFile << rd_cc_.link_[Pelvis].xpos(i) << "\t";
+                writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Pelvis].rotm)(2) << "\t";
+                for (int i = 0; i < 2; i++)
+                    writeFile << rd_cc_.link_[COM_id].xpos(i) << "\t";
+                writeFile << DyrosMath::rot2Euler(rd_cc_.link_[COM_id].rotm)(2) << "\t";
+                for (int i = 0; i < 2; i++)
+                    writeFile << rd_cc_.link_[Left_Foot].xpos(i) << "\t";
+                writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2) << "\t";
+                for (int i = 0; i < 2; i++)
+                    writeFile << rd_cc_.link_[Right_Foot].xpos(i) << "\t";
+                writeFile << DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2) << "\t";
                 writeFile << endl;
             }
 
@@ -665,14 +627,12 @@ void CustomController::updateCommand()
             walking_tick = 0;
 
             if (current_step_number_ < number_of_planner_step) {
-                // Vector3d lfoot_global_state__ = rd_cc_.link_[Left_Foot].xpos;
-                // Vector3d rfoot_global_state__ = rd_cc_.link_[Right_Foot].xpos;
-                // lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
-                // rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
-                // lfoot_global_state__(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
-                // rfoot_global_state__(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
-                // Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state__ : lfoot_global_state__;
+                lfoot_global_state_.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
+                rfoot_global_state_.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
+                lfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
+                rfoot_global_state_(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
                 Eigen::Vector3d &stance = (phase_indicator_(0) == 1) ? rfoot_global_state_ : lfoot_global_state_;
+
                 double x_len = foot_commands_planner_(current_step_number_, 0) - stance(0);
                 double y_len = foot_commands_planner_(current_step_number_, 1) - stance(1);
 
@@ -681,7 +641,7 @@ void CustomController::updateCommand()
                 foot_commands_(0, 2) = foot_commands_planner_(current_step_number_, 2) - foot_commands_planner_(current_step_number_-1, 2);
                 foot_commands_(0, 3) = foot_commands_planner_(current_step_number_, 3);
                 foot_commands_(0, 4) = foot_commands_planner_(current_step_number_, 4);
-                foot_commands_(0, 5) = foot_commands_planner_(current_step_number_, 5) - stance(2);
+                foot_commands_(0, 5) = wrap_to_pi(foot_commands_planner_(current_step_number_, 5) - stance(2));
                 foot_commands_(0, 6) = foot_commands_planner_(current_step_number_, 6);
                 foot_commands_(0, 7) = foot_commands_planner_(current_step_number_, 7);
                 foot_commands_(0, 8) = foot_commands_planner_(current_step_number_, 8);
@@ -710,7 +670,7 @@ void CustomController::updateCommand()
                     }
                 }
                 cout << "Next Foot Commands   : " << foot_commands_.row(0).segment(0, 3) << " " << foot_commands_.row(0)(5) << endl;
-        }
+            }
             else {
                 int step = number_of_foot_step - 1;
                 foot_commands_.row(step) << 0.0, 0.205, 0, 0, 0, 0, 0.9, 0.15, 0.08;
@@ -723,6 +683,8 @@ void CustomController::updateCommand()
 
 void CustomController::updateRobotStates()
 {
+    WBC::SetContact(rd_, 1 - phase_indicator_(0), phase_indicator_(0));
+
     pelvis_state_global_.translation() = rd_cc_.link_[Pelvis].xpos;
     pelvis_state_global_.linear() = rd_cc_.link_[Pelvis].rotm;
     com_pos_state_global_ = rd_cc_.link_[COM_id].xpos;
@@ -751,18 +713,18 @@ void CustomController::updateRobotStates()
     com_vel_state_stance_ = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(stance_foot_state_global_), com_vel_state_global_);
     swing_state_stance_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * swing_foot_state_global_;
 
-    // Compute Global Foot States, estimates
-    lfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * lfoot_global_current_;
-    rfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * rfoot_global_current_;
-    Eigen::Vector3d &stance = (phase_indicator_(0)) ? rfoot_global_state_ : lfoot_global_state_;
-    Eigen::Vector3d &swing = (phase_indicator_(0)) ? lfoot_global_state_ : rfoot_global_state_;
-    Eigen::Isometry3d &swing_stance = (phase_indicator_(0)) ? lfoot_support_current_ : rfoot_support_current_;
+    // // Compute Global Foot States, estimates
+    // lfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * lfoot_global_current_;
+    // rfoot_support_current_ = DyrosMath::inverseIsometry3d(stance_foot_state_global_) * rfoot_global_current_;
+    // Eigen::Vector3d &stance = (phase_indicator_(0)) ? rfoot_global_state_ : lfoot_global_state_;
+    // Eigen::Vector3d &swing = (phase_indicator_(0)) ? lfoot_global_state_ : rfoot_global_state_;
+    // Eigen::Isometry3d &swing_stance = (phase_indicator_(0)) ? lfoot_support_current_ : rfoot_support_current_;
     
-    double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
-    swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
-    swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
-    // stance(2) = DyrosMath::rot2Euler(stance_foot_state_global_.linear())(2);
-    swing(2) = stance(2) + swing_yaw_stance;
+    // double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
+    // swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
+    // swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
+    // // stance(2) = DyrosMath::rot2Euler(stance_foot_state_global_.linear())(2);
+    // swing(2) = stance(2) + swing_yaw_stance;
 }
 
 void CustomController::generateVRP()
