@@ -13,7 +13,7 @@ SCENE_XML = os.path.join(
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 35
 
-CUBE_TEMPLATE = '        <body name="cube_{i:02d}" mocap="true" pos="0 0 -0.05"><geom type="box" size="0.1500 0.1000 0.05" rgba="0.2 0.68 0.13 1"/></body>'
+CUBE_TEMPLATE = '        <body name="cube_{i:02d}" mocap="true" pos="0 0 -0.05"><geom type="box" size="0.1500 0.5 0.05" rgba="0.2 0.68 0.13 1"/></body>'
 
 cubes = "\n".join(CUBE_TEMPLATE.format(i=i) for i in range(1, N + 1))
 
@@ -57,7 +57,7 @@ xml = f"""<mujoco model="scene">
 
     <worldbody>
         <!-- mocap body: m->body_pos / m->body_quat 으로 런타임 위치 제어 -->
-        <geom name="startterrain" type="box" pos="0.1 0. -0.05" size="0.15 0.2 0.05" rgba="0.2 0.5 0.2 1"/>
+        <geom name="startterrain" type="box" pos="0.1 0. -0.05" size="0.15 0.5 0.05" rgba="0.2 0.5 0.2 1"/>
 
 {cubes}
 

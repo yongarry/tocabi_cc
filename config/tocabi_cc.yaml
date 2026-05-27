@@ -1,5 +1,5 @@
 write_file: true
-weight: "policy3d-rlparam.onnx"
+weight: "policy3d-lcp30.onnx"
 cmd: "global_command.csv"
 # cmd: "command.csv"
 cmd_mode: 1 # 0: local, 1: global

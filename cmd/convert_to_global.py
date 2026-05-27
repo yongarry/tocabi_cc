@@ -42,7 +42,7 @@ def to_global(data):
 
     # ── step 0 ──────────────────────────────────────────────────────────────
     # stance_0 is the origin (first stance foot = world origin)
-    stance[0] = [0.0, 0.1025, 0.0, 0.0]
+    stance[0] = [0.1, 0.1025, 0.0, 0.0]
 
     swing[0] = [
         stance[0][0] + step_x[0],
