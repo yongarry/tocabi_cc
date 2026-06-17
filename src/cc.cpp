@@ -9,6 +9,9 @@ CustomController::CustomController(RobotData &rd)
         session(nullptr)
 {
     ControlVal_.setZero();
+    workspace_dir_ = ros::package::getPath("tocabi_cc");
+    if (!workspace_dir_.empty() && workspace_dir_.back() != '/')
+        workspace_dir_ += '/';
     nh_.getParam("/tocabi_cc/weight_dir", weight_dir_);
     nh_.getParam("/tocabi_cc/policy_mode", policy_mode); // 0 for ral, 1 for heuri, 2 for intern
     nh_.getParam("/tocabi_cc/ctrl_mode", ctrl_mode); // 0 for Joystick Mode 1 for Stepping Stone, 2 for Random Command, 3 for Data Collection
@@ -50,6 +53,16 @@ CustomController::CustomController(RobotData &rd)
     joy_sub_ = nh_.subscribe<sensor_msgs::Joy>("joy_wh", 10, &CustomController::joyCallback, this);
     aruco_sub_ = nh_.subscribe<std_msgs::Float64MultiArray>("aruco_relative/poses", 10, &CustomController::ArUcoPoseCallback, this);
     // marker_ids_sub_ = nh_.subscribe<std_msgs::Int32MultiArray>("aruco_relative/ids", 10, &CustomController::ArucoIDCallback, this);
+    perturb_pub = nh_.advertise<mujoco_ros_msgs::applyforce>("/mujoco_ros_interface/applied_ext_force", 10);
+    perturb_msg_.link_idx = 1;
+    perturb_msg_.wrench.force.x = 0.0; perturb_msg_.wrench.force.y = 0.0; perturb_msg_.wrench.force.z = 0.0;
+    perturb_msg_.wrench.torque.x = 0.0; perturb_msg_.wrench.torque.y = 0.0; perturb_msg_.wrench.torque.z = 0.0;
+    nh_.getParam("/tocabi_cc/is_perturb", is_perturb);
+    nh_.getParam("/tocabi_cc/perturb_start", perturb_start);
+    nh_.getParam("/tocabi_cc/perturb_duration_s", perturb_duration_s);
+    nh_.getParam("/tocabi_cc/perturb_magnitude", perturb_magnitude);
+    nh_.getParam("/tocabi_cc/perturb_theta", perturb_theta);
+    perturb_end = perturb_start + perturb_duration_s * hz_;
 }
 
 Eigen::VectorQd CustomController::getControl()
@@ -797,7 +810,7 @@ void CustomController::computeSlow()
         processBias();
         if ((rd_cc_.control_time_us_ - time_inference_pre_)/1.0e6 >= 1/hz_) // 125 is the control frequency
         {
-            auto start_time = std::chrono::steady_clock::now();
+            // auto start_time = std::chrono::steady_clock::now();
             // Call the functions you want to measure
             if (policy_mode == 2)
                 updateFootstepCommand_intern();
@@ -808,17 +821,30 @@ void CustomController::computeSlow()
             getComTrajectory(); 
             getFootTrajectory();
             getTargetState();
-            auto dt0 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
-            auto t0 = std::chrono::steady_clock::now();
-            cout << "getTargetState took " << dt0 << " us" << endl;
+            // auto dt0 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+            // auto t0 = std::chrono::steady_clock::now();
+            // cout << "getTargetState took " << dt0 << " us" << endl;
             if (policy_mode == 0 || policy_mode == 1 || policy_mode == 2){
                 processObservation();
                 feedforwardPolicy();
             }
             updateNextStepTime();
+            perturb_tick++;
+            if (is_perturb && perturb_tick == perturb_start)
+            {
+                perturb_msg_.wrench.force.x = perturb_magnitude * cos(perturb_theta * DEG2RAD);
+                perturb_msg_.wrench.force.y = perturb_magnitude * sin(perturb_theta * DEG2RAD);
+                perturb_pub.publish(perturb_msg_);
+            }
+            else if (is_perturb && perturb_tick == perturb_end)
+            {
+                perturb_msg_.wrench.force.x = 0.0;
+                perturb_msg_.wrench.force.y = 0.0;
+                perturb_pub.publish(perturb_msg_);
+            }
             // Calculate the duration in microseconds
-            auto dt1 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
-            cout << "processObservation and feedforwardPolicy took " << dt1 << " us" << endl;
+            // auto dt1 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+            // cout << "processObservation and feedforwardPolicy took " << dt1 << " us" << endl;
 
             action_dt_accumulate_ += DyrosMath::minmax_cut(rl_action_(num_action-1)*5/hz_, 0.0, 5/hz_);
             // if (value_ < 10.0)
@@ -841,7 +867,7 @@ void CustomController::computeSlow()
                 // writeFile << rd_cc_.RF_CF_FT.transpose() << "\t";
 
                 // writeFile << rd_cc_.torque_desired.transpose()  << "\t";
-                writeFile << q_noise_.transpose() << "\t";
+                // writeFile << q_noise_.transpose() << "\t";
                 // writeFile << q_dot_lpf_.transpose() << "\t";
                 // writeFile << base_lin_vel.transpose() << "\t" << base_ang_vel.transpose() << "\t" << rd_cc_.q_dot_virtual_.segment(6,33).transpose() << "\t";
                 // writeFile << rd_cc_.q_virtual_.transpose() << "\t";
@@ -849,13 +875,13 @@ void CustomController::computeSlow()
 
                 // writeFile << value_ << "\t" << stop_by_value_thres_ << "\t";
                 // writeFile << target_swing_state_stance_frame_.transpose() << "\t";
-                // writeFile << target_com_state_stance_frame_.transpose() << "\t";
+                writeFile << target_com_state_stance_frame_.transpose() << "\t";
                 // writeFile << swing_state_stance_frame_.transpose() << "\t";
-                // writeFile << com_state_stance_frame_.transpose() << "\t";
-                // writeFile << q_leg_desired_.transpose() << "\t";
-                // writeFile << ref_zmp_(walking_tick,0) << "\t";
-                // writeFile << ref_zmp_(walking_tick, 1) << "\t";
-                writeFile << torque_rl_.transpose() << "\t";
+                writeFile << com_state_stance_frame_.transpose() << "\t";
+                writeFile << q_leg_desired_.transpose() << "\t";
+                writeFile << ref_zmp_(walking_tick,0) << "\t";
+                writeFile << ref_zmp_(walking_tick, 1) << "\t";
+                // writeFile << torque_rl_.transpose() << "\t";
                 writeFile << std::endl;
                 time_write_pre_ = rd_cc_.control_time_us_;
             }
@@ -1830,6 +1856,7 @@ void CustomController::updateFootstepCommand_intern(){
 }
 void CustomController::getRobotState()
 {
+    WBC::SetContact(rd_, 1 - phase_indicator_(0), phase_indicator_(0));
 
     pelv_rpy_current_.setZero();
     pelv_rpy_current_ = DyrosMath::rot2Euler(rd_cc_.link_[Pelvis].rotm); //ZYX multiply
@@ -1906,18 +1933,21 @@ void CustomController::getRobotState()
         y_preview_(2) = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(supportfoot_global_current_), com_global_current_dot_ - com_global_current_dot_prev_)(1) * hz_;
     }
 
-    // Compute Global Foot States, estimates
+    // // Compute Global Foot States, estimates with contact estimation
+    rfoot_global_state.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
+    lfoot_global_state.segment(0,2) = rd_cc_.link_[Left_Foot].xpos.segment(0,2);
+    rfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Right_Foot].rotm)(2);
+    lfoot_global_state(2) = DyrosMath::rot2Euler(rd_cc_.link_[Left_Foot].rotm)(2);
 
-    Eigen::Vector3d &stance = (phase_indicator_(0)) ? rfoot_global_state : lfoot_global_state;
-    Eigen::Vector3d &swing = (phase_indicator_(0)) ? lfoot_global_state : rfoot_global_state;
-    Eigen::Isometry3d &swing_stance = (phase_indicator_(0)) ? lfoot_support_current_ : rfoot_support_current_;
+    // // Compute Global Foot States, estimates
+    // Eigen::Vector3d &stance = (phase_indicator_(0)) ? rfoot_global_state : lfoot_global_state;
+    // Eigen::Vector3d &swing = (phase_indicator_(0)) ? lfoot_global_state : rfoot_global_state;
+    // Eigen::Isometry3d &swing_stance = (phase_indicator_(0)) ? lfoot_support_current_ : rfoot_support_current_;
     
-    double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
-    swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
-    swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
-    swing(2) = stance(2) + swing_yaw_stance;
-
-  
+    // double swing_yaw_stance = DyrosMath::rot2Euler(swing_stance.linear())(2);
+    // swing(0) = stance(0) + cos(stance(2))*swing_stance.translation()(0) - sin(stance(2))*swing_stance.translation()(1);
+    // swing(1) = stance(1) + sin(stance(2))*swing_stance.translation()(0) + cos(stance(2))*swing_stance.translation()(1);
+    // swing(2) = stance(2) + swing_yaw_stance;
 }
 
 void CustomController::calculateFootStepTotal()

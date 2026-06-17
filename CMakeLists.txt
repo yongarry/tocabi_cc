@@ -5,15 +5,17 @@ add_compile_options(-std=c++17 -Ofast)
 
 find_package(catkin REQUIRED
 roscpp
+roslib
 tocabi_lib
 tocabi_msgs
+mujoco_ros_msgs
 eigen_conversions
 )
 
 catkin_package(
   INCLUDE_DIRS include /usr/local/include/onnxruntime
   LIBRARIES ${PROJECT_NAME} onnxruntime
-  CATKIN_DEPENDS tocabi_lib tocabi_msgs
+  CATKIN_DEPENDS roscpp roslib tocabi_lib tocabi_msgs
 # DEPENDS system_lib
 )
 

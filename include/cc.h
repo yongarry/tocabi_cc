@@ -4,7 +4,9 @@
 #include <cmath>
 
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <sensor_msgs/Joy.h>
+#include "mujoco_ros_msgs/applyforce.h"
 #include <std_msgs/Int32MultiArray.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseArray.h>
@@ -18,7 +20,7 @@ public:
     Eigen::VectorQd getControl();
 
     //void taskCommandToCC(TaskCommand tc_);
-    string workspace_dir_ = "/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/";
+    string workspace_dir_;
     string weight_dir_ = "";
 
     const double hz_ =125.;
@@ -124,7 +126,15 @@ public:
     // std::vector<Eigen::Quaterniond> aruco_quat_;
     std::vector<Eigen::Isometry3d> stepcmd_pelv_, stepcmd_global_;
 
-
+    ros::Publisher perturb_pub;
+    mujoco_ros_msgs::applyforce perturb_msg_;
+    bool is_perturb = false;
+    int perturb_start = 500;
+    int perturb_end;
+    int perturb_tick = 0;
+    double perturb_duration_s = 1.0;
+    double perturb_magnitude = 500.0;
+    double perturb_theta = 0.0;
 
     // BIPED WALKING PARAMETER
     void walkingParameterSetting();
