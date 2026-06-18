@@ -783,6 +783,7 @@ void CustomController::computeSlow()
             torque_init_ = rd_cc_.torque_desired;
             target_com_state_stance_frame_.setZero(13);
             target_swing_state_stance_frame_.setZero(13);
+            target_com_state_global_frame_.setZero(13);
 
             if (policy_mode == 2)
                 updateFootstepCommand_intern();
@@ -875,13 +876,27 @@ void CustomController::computeSlow()
 
                 // writeFile << value_ << "\t" << stop_by_value_thres_ << "\t";
                 // writeFile << target_swing_state_stance_frame_.transpose() << "\t";
-                writeFile << target_com_state_stance_frame_.transpose() << "\t";
+                // writeFile << target_com_state_stance_frame_.transpose() << "\t";
                 // writeFile << swing_state_stance_frame_.transpose() << "\t";
-                writeFile << com_state_stance_frame_.transpose() << "\t";
-                writeFile << q_leg_desired_.transpose() << "\t";
+                // writeFile << com_state_stance_frame_.transpose() << "\t";
+                // writeFile << q_leg_desired_.transpose() << "\t";
+                // writeFile << ref_zmp_(walking_tick,0) << "\t";
+                // writeFile << ref_zmp_(walking_tick, 1) << "\t";
+                // writeFile << torque_rl_.transpose() << "\t";
+
                 writeFile << ref_zmp_(walking_tick,0) << "\t";
                 writeFile << ref_zmp_(walking_tick, 1) << "\t";
-                // writeFile << torque_rl_.transpose() << "\t";
+                writeFile << zmp_measured_mj_(0) << "\t";
+                writeFile << zmp_measured_mj_(1) << "\t";
+                writeFile << target_com_state_stance_frame_.transpose().segment(0,2) << "\t";
+                writeFile << com_state_stance_frame_.transpose().segment(0,2) << "\t";
+                writeFile << com_global_current_.transpose().segment(0,2) << "\t";
+                writeFile << rd_.link_[Pelvis].xpos.transpose().segment(0,2) << "\t";
+                writeFile << rd_.link_[Left_Foot].xpos.transpose().segment(0,2) << "\t";
+                writeFile << rd_.link_[Right_Foot].xpos.transpose().segment(0,2) << "\t";
+                writeFile << q_leg_desired_.transpose() << "\t";
+                writeFile << q_noise_.transpose().segment(0,12) << "\t";
+                writeFile << target_com_state_global_frame_.transpose().segment(0,2) << "\t";
                 writeFile << std::endl;
                 time_write_pre_ = rd_cc_.control_time_us_;
             }
@@ -1902,6 +1917,32 @@ void CustomController::getRobotState()
     lfoot_support_current_ = DyrosMath::inverseIsometry3d(supportfoot_global_current_) * lfoot_global_current_;
     rfoot_support_current_ = DyrosMath::inverseIsometry3d(supportfoot_global_current_) * rfoot_global_current_;
 
+    // Measured ZMP from foot F/T sensors (in stance foot frame)
+    l_ft_ = rd_cc_.LF_FT; // generated force by robot left foot
+    r_ft_ = rd_cc_.RF_FT; // generated force by robot right foot
+
+    static bool ft_lpf_initialized = false;
+    if (!ft_lpf_initialized)
+    {
+        l_ft_LPF = l_ft_;
+        r_ft_LPF = r_ft_;
+        zmp_measured_LPF_.setZero();
+        ft_lpf_initialized = true;
+    }
+    l_ft_LPF = 1 / (1 + 2 * M_PI * 6.0 * del_t) * l_ft_LPF + (2 * M_PI * 6.0 * del_t) / (1 + 2 * M_PI * 6.0 * del_t) * l_ft_;
+    r_ft_LPF = 1 / (1 + 2 * M_PI * 6.0 * del_t) * r_ft_LPF + (2 * M_PI * 6.0 * del_t) / (1 + 2 * M_PI * 6.0 * del_t) * r_ft_;
+
+    Eigen::Vector2d left_zmp, right_zmp;
+    left_zmp(0) = -l_ft_LPF(4) / l_ft_LPF(2) + lfoot_support_current_.translation()(0);
+    left_zmp(1) = l_ft_LPF(3) / l_ft_LPF(2) + lfoot_support_current_.translation()(1);
+    right_zmp(0) = -r_ft_LPF(4) / r_ft_LPF(2) + rfoot_support_current_.translation()(0);
+    right_zmp(1) = r_ft_LPF(3) / r_ft_LPF(2) + rfoot_support_current_.translation()(1);
+
+    zmp_measured_mj_(0) = (left_zmp(0) * l_ft_LPF(2) + right_zmp(0) * r_ft_LPF(2)) / (l_ft_LPF(2) + r_ft_LPF(2)); // ZMP X
+    zmp_measured_mj_(1) = (left_zmp(1) * l_ft_LPF(2) + right_zmp(1) * r_ft_LPF(2)) / (l_ft_LPF(2) + r_ft_LPF(2)); // ZMP Y
+
+    zmp_measured_LPF_ = (2 * M_PI * 8.0 * del_t) / (1 + 2 * M_PI * 8.0 * del_t) * zmp_measured_mj_ + 1 / (1 + 2 * M_PI * 8.0 * del_t) * zmp_measured_LPF_;
+
     com_support_current_ = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(supportfoot_global_current_), com_global_current_);
     com_support_current_dot_ = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(supportfoot_global_current_), com_global_current_dot_);
     // std::cout << "Support foot is : " << ((phase_indicator_(0)) ? "right" : "left") << std::endl;
@@ -1932,6 +1973,10 @@ void CustomController::getRobotState()
         x_preview_(2) = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(supportfoot_global_current_), com_global_current_dot_ - com_global_current_dot_prev_)(0) * hz_;
         y_preview_(2) = DyrosMath::multiplyIsometry3dVector3d(DyrosMath::inverseIsometry3d(supportfoot_global_current_), com_global_current_dot_ - com_global_current_dot_prev_)(1) * hz_;
     }
+
+    // // Current ZMP from LIPM dynamics: xddot = (g/zc)(x - zmp_x) -> zmp_x = x - (zc/g)*xddot
+    // zmp_measured_mj_(0) = x_preview_(0) - (com_height_ / GRAVITY) * x_preview_(2);
+    // zmp_measured_mj_(1) = y_preview_(0) - (com_height_ / GRAVITY) * y_preview_(2);
 
     // // Compute Global Foot States, estimates with contact estimation
     rfoot_global_state.segment(0,2) = rd_cc_.link_[Right_Foot].xpos.segment(0,2);
@@ -3180,6 +3225,20 @@ void CustomController::getTargetState(){
     target_rfoot_state_float_frame_.linear() = (1-phase_indicator_(0))*target_com_state_stance_frame_quat_.toRotationMatrix().transpose()*target_swing_state_stance_frame_quat_.toRotationMatrix() + phase_indicator_(0)*target_com_state_stance_frame_quat_.toRotationMatrix().transpose();
 
     computeIkControl(target_com_state_float_frame_, target_lfoot_state_float_frame_, target_rfoot_state_float_frame_, q_leg_desired_);
+
+    // Express target_com_state_stance_frame_ in the global frame (inverse of the stance-frame transform in getRobotState)
+    // position: p_global = R_support * p_stance + t_support
+    target_com_state_global_frame_.segment(0, 3) = DyrosMath::multiplyIsometry3dVector3d(supportfoot_global_current_, target_com_state_stance_frame_.segment(0, 3));
+    // orientation: R_global = R_support * R_stance
+    Eigen::Matrix3d com_rotm_global = supportfoot_global_current_.linear() * target_com_state_stance_frame_quat_.toRotationMatrix();
+    Eigen::Quaterniond com_quat_global(com_rotm_global);
+    target_com_state_global_frame_(3) = com_quat_global.x();
+    target_com_state_global_frame_(4) = com_quat_global.y();
+    target_com_state_global_frame_(5) = com_quat_global.z();
+    target_com_state_global_frame_(6) = com_quat_global.w();
+    // linear / angular velocity: v_global = R_support * v_stance (support foot is static)
+    target_com_state_global_frame_.segment(7, 3) = supportfoot_global_current_.linear() * target_com_state_stance_frame_.segment(7, 3);
+    target_com_state_global_frame_.segment(10, 3) = supportfoot_global_current_.linear() * target_com_state_stance_frame_.segment(10, 3);
 }
 
 

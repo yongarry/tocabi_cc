@@ -165,6 +165,7 @@ public:
     // Policy input
     Eigen::VectorXd target_com_state_stance_frame_;
     Eigen::VectorXd target_swing_state_stance_frame_;
+    Eigen::VectorXd target_com_state_global_frame_; // target_com_state_stance_frame_ expressed in global frame
 
 
     Eigen::MatrixXd foot_step_;
@@ -322,7 +323,7 @@ public:
     double Rcommand_t_ssp_ = .7;
     double Rcommand_foot_height_ = 0.08;
 
-    bool ideal_preview = false;
+    bool ideal_preview = true;
 
     int ctrl_mode = 2; // 0 for Joystick Mode 1 for Stepping Stone, 2 for Random Command, 3 for Data Collection
     int policy_mode = 0; // 0 for ral, 1 for heuri, 2 for intern
