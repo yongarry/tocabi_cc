@@ -4,6 +4,15 @@ Rebuild stair_simulation_scene.xml cube mocap bodies from global_command.csv
 (or a step count). Runtime still overwrites mocap_pos from the CSV; baking
 x/z/yaw into the XML keeps the scene consistent when opened alone.
 
+Offsets (--offset-x/y/z) apply only to stepping stones / stair treads:
+  stone XY = CSV target + R(yaw)*(ox, oy)   # foot yaw frame: +x fwd, +y left
+  stone Z  = CSV pos_z + oz                 # world-up
+
+When min(pos_z) is below the spawn platform top, startterrain spans down to
+that level and footstep_ground sits there. If min(pos_z) is at/above platform
+top, footstep_ground moves to the platform top and startterrain uses a fixed
+depth.
+
 --stair places static tread geoms along the L/R midline (not on each foot),
 so a turning/spiral command looks like one staircase instead of a zigzag of
 foot-sized blocks. Each tread is a box from the ground up to pos_z. The last
@@ -15,6 +24,7 @@ Usage:
   python3 gen_scene.py --csv path.csv
   python3 gen_scene.py --stair          # staircase treads at y=0
   python3 gen_scene.py --stair --size 0.125 0.5
+  python3 gen_scene.py --offset-x 0.03 --offset-y 0.0
   python3 gen_scene.py 20               # N cubes at origin (legacy)
 """
 import argparse
@@ -34,13 +44,24 @@ CUBE_HX = 0.125
 CUBE_HY = 0.1
 CUBE_HZ = 0.1
 # --stair default half-extents. Z is from the ground to pos_z unless HZ is given.
-STAIR_SIZE = (0.125, 0.3, 3.7)
+# STAIR_SIZE = (0.125, 0.3, 3.7)
+STAIR_SIZE = (0.125, 0.5)
 # Spawn stance used when the first tread has no previous swing (match convert_to_global).
 DEFAULT_INIT_LFOOT = (0.1, 0.1025, 0.0, 0.0)
 DEFAULT_INIT_RFOOT = (0.1, -0.1025, 0.0, 0.0)
 # Right = blue-ish, Left = red-ish (same convention as g1_controller markers)
-COLOR_R = "0.15 0.35 0.95 1"
-COLOR_L = "0.90 0.15 0.15 1"
+# COLOR_R = "0.15 0.35 0.95 1"
+# COLOR_L = "0.90 0.15 0.15 1"
+COLOR_L = "0.2 0.2 0.2 1"
+COLOR_R = "0.2 0.2 0.2 1"
+COLOR_GROUND = "0.7 0.6 0.5 1"
+COLOR_PLATFORM = "0.2 0.2 0.2 1"
+# startterrain: top at z=0, centered at x=0.1 (spawn feet).
+DEFAULT_PLATFORM_SIZE = (0.16, 0.30)
+DEFAULT_PLATFORM_XY = (0.1, 0.0)
+DEFAULT_PLATFORM_TOP = 0.0
+DEFAULT_PLATFORM_HALF_HEIGHT = 0.5  # when min(pos_z) >= platform_top
+DEFAULT_PLANE_MARGIN = 3.0
 
 
 def read_global_csv(path):
@@ -74,6 +95,22 @@ def foot_for_step(i, start):
 
 def yaw_to_quat(yaw):
     return (math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0))
+
+
+def yaw_frame_offset(x, y, yaw, ox, oy):
+    """Translate (x, y) by (ox, oy) in the foot yaw frame (+x fwd, +y left)."""
+    c, s = math.cos(yaw), math.sin(yaw)
+    return x + c * ox - s * oy, y + s * ox + c * oy
+
+
+def landing_poses(targets, off):
+    """Stepping-stone landings: XY in each foot's yaw frame, Z world-up."""
+    ox, oy, oz = off
+    out = []
+    for t in targets:
+        sx, sy = yaw_frame_offset(t["x"], t["y"], t["yaw"], ox, oy)
+        out.append({"x": sx, "y": sy, "z": t["z"] + oz, "yaw": t["yaw"]})
+    return out
 
 
 def cube_body(i, x, y, z, yaw, foot):
@@ -121,6 +158,47 @@ def tread_pose(swing, stance, hx, hy_min):
     px = swing["x"] - s * yc
     py = swing["y"] + c * yc
     return px, py, yaw, hx, hy
+
+
+def platform_ground_geoms(xs, ys, z_min, platform_size, platform_xy,
+                          platform_top, plane_margin):
+    """Spawn platform + ground plane at the lowest footstep (or platform top).
+
+    If min(pos_z) >= platform_top, the plane sits at the platform top and the
+    box uses a fixed half-height. Otherwise the plane is at z_min and the
+    platform spans from that level up to platform_top.
+    """
+    if z_min >= platform_top:
+        z_ground = platform_top
+        plat_hz = DEFAULT_PLATFORM_HALF_HEIGHT
+        plat_zc = platform_top - plat_hz
+    else:
+        z_ground = z_min
+        plat_hz = (platform_top - z_min) * 0.5
+        plat_zc = z_min + plat_hz
+
+    plat_hx, plat_hy = platform_size
+    plat_x, plat_y = platform_xy
+    if xs:
+        plane_cx = 0.5 * (min(xs) + max(xs))
+        plane_cy = 0.5 * (min(ys) + max(ys))
+        plane_hx = 0.5 * (max(xs) - min(xs)) + plane_margin
+        plane_hy = 0.5 * (max(ys) - min(ys)) + plane_margin
+    else:
+        plane_cx, plane_cy = plat_x, plat_y
+        plane_hx = plane_hy = plane_margin
+
+    lines = [
+        f'        <geom name="startterrain" type="box" group="3" '
+        f'size="{plat_hx:.4f} {plat_hy:.4f} {plat_hz:.4f}" '
+        f'pos="{plat_x:.4f} {plat_y:.4f} {plat_zc:.4f}" '
+        f'rgba="{COLOR_PLATFORM}"/>',
+        f'        <geom name="footstep_ground" type="plane" '
+        f'pos="{plane_cx:.4f} {plane_cy:.4f} {z_ground:.4f}" '
+        f'size="{plane_hx:.4f} {plane_hy:.4f} 0.1" '
+        f'rgba="{COLOR_GROUND}" group="3"/>',
+    ]
+    return "\n".join(lines), z_ground
 
 
 def stair_geom(i, x, y, z_top, yaw, foot, hx, hy, z_ground, fixed_hz=None):
@@ -187,8 +265,6 @@ def build_xml(cubes_xml):
 
     <worldbody>
         <!-- mocap body: m->body_pos / m->body_quat 으로 런타임 위치 제어 -->
-        <geom name="startterrain" type="box" pos="0.1 0. -0.05" size="0.16 0.3 0.05" rgba="0.2 0.2 0.2 1"/>
-
 {cubes_xml}
 
     </worldbody>
@@ -216,6 +292,22 @@ def main():
                    help="with --stair: HX HY [HZ] box half-extents [m] "
                         f"(default {STAIR_SIZE[0]} {STAIR_SIZE[1]}, Z = ground→pos_z). "
                         "If HZ is given, vertical half-size is fixed (top at pos_z)")
+    p.add_argument("--plane-margin", type=float, default=DEFAULT_PLANE_MARGIN,
+                   help="extra half-length around the footstep bounding box for the ground plane [m]")
+    p.add_argument("--platform-size", nargs=2, type=float,
+                   default=list(DEFAULT_PLATFORM_SIZE), metavar=("HX", "HY"),
+                   help="spawn platform horizontal half-extents [m]")
+    p.add_argument("--platform-xy", nargs=2, type=float,
+                   default=list(DEFAULT_PLATFORM_XY), metavar=("X", "Y"),
+                   help="spawn platform center XY [m]")
+    p.add_argument("--platform-top", type=float, default=DEFAULT_PLATFORM_TOP,
+                   help="spawn platform top face height [m] (default: z=0)")
+    p.add_argument("--offset-x", type=float, default=-0.0,
+                   help="stone XY offset in each foot's yaw frame, forward [m]")
+    p.add_argument("--offset-y", type=float, default=0.0,
+                   help="stone XY offset in each foot's yaw frame, left [m]")
+    p.add_argument("--offset-z", type=float, default=0.0,
+                   help="stone top height offset in world-up [m]")
     args = p.parse_args()
     if args.size is not None and not args.stair:
         p.error("--size is only used with --stair")
@@ -233,60 +325,74 @@ def main():
         targets = read_global_csv(csv_path)
         src = csv_path
 
+    off = (args.offset_x, args.offset_y, args.offset_z)
+    stones = landing_poses(targets, off)
+    zs = [s["z"] for s in stones]
+    z_min = min(zs) if zs else args.platform_top
+    xs = [s["x"] for s in stones]
+    ys = [s["y"] for s in stones]
+    base, z_ground = platform_ground_geoms(
+        xs, ys, z_min,
+        tuple(args.platform_size), tuple(args.platform_xy),
+        args.platform_top, args.plane_margin,
+    )
+    ox, oy, oz = off
+    extra_off = f", offset=({ox}, {oy}, {oz})" if off != (0.0, 0.0, 0.0) else ""
+
     if args.stair:
         hx, hy = args.size[0], args.size[1]
         fixed_hz = args.size[2] if len(args.size) == 3 else None
-        zs = [t["z"] for t in targets]
-        z_min = min(zs) if zs else 0.0
-        z_ground = 0.0 if z_min >= 0.0 else z_min
         stair_lines = []
-        # cubes = "\n".join(
-        #     cube_body(
-        #         i + 1, t["x"], t["y"], t["z"], t["yaw"], foot_for_step(i, args.start)
-        #     )
-        #     for i, t in enumerate(targets)
-        # )
         for i, t in enumerate(targets):
             # last CSV row is a stop (step_x/z/yaw = 0); same XY as the previous
             # landing, so a full-height pillar here would bury that tread.
             if i == len(targets) - 1:
                 continue
+            # Midline from raw CSV feet so offset does not change tread width;
+            # then shift the tread in the swing yaw frame.
             px, py, yaw, hx_i, hy_i = tread_pose(
                 t, prev_stance(targets, i, args.start), hx, hy,
             )
+            px, py = yaw_frame_offset(px, py, yaw, ox, oy)
             g = stair_geom(
-                i + 1, px, py, t["z"], yaw, foot_for_step(i, args.start),
+                i + 1, px, py, t["z"] + oz, yaw, foot_for_step(i, args.start),
                 hx_i, hy_i, z_ground, fixed_hz=fixed_hz,
             )
             if g is not None:
                 stair_lines.append(g)
-        cubes = "\n".join(stair_lines)
-        # add ground plane on cubes
-        ground_plane = f'<geom name="ground" type="plane" pos="0 0 0" size="100 100 .05" rgba="0.7 0.6 0.5 1" group="3"/>'
-        cubes += "\n" + ground_plane
+        cubes = base + "\n\n" + "\n".join(stair_lines)
         n_geom = len(stair_lines)
         kind = "stair"
-        extra = f" midline size=({hx}, {hy}, {fixed_hz if fixed_hz is not None else 'ground'})"
+        extra = (
+            f" midline size=({hx}, {hy}, {fixed_hz if fixed_hz is not None else 'ground'})"
+            + extra_off
+        )
 
     else:
-        cubes = "\n".join(
+        cube_lines = "\n".join(
             cube_body(
-                i + 1, t["x"], t["y"], t["z"], t["yaw"], foot_for_step(i, args.start)
+                i + 1, s["x"], s["y"], s["z"], s["yaw"], foot_for_step(i, args.start)
             )
-            for i, t in enumerate(targets)
+            for i, s in enumerate(stones)
         )
+        cubes = base + "\n\n" + cube_lines
         n_geom = len(targets)
         kind = "cube"
-        extra = ""
+        extra = extra_off
 
     out = os.path.realpath(args.xml)
     with open(out, "w") as f:
         f.write(build_xml(cubes))
     n_r = sum(1 for i in range(len(targets)) if foot_for_step(i, args.start) == "R")
     n_l = len(targets) - n_r
+    ground_note = (
+        f"at platform_top={args.platform_top:.4f} (min pos_z={z_min:.4f} >= platform)"
+        if z_min >= args.platform_top
+        else f"z_ground={z_ground:.4f}"
+    )
     print(
         f"생성 완료: {out}  ({kind} 개수: {n_geom}, R={n_r}/blue L={n_l}/red, "
-        f"start={args.start}{extra}, from {src})"
+        f"start={args.start}{extra}, from {src}, {ground_note})"
     )
 
 

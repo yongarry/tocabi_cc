@@ -27,7 +27,7 @@ public:
     Eigen::VectorQd getControl();
 
     //void taskCommandToCC(TaskCommand tc_);
-    string workspace_dir_ = "/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/";
+    string workspace_dir_ = "/home/yong20/ros_ws/ros1/footsteptocabi_ws/src/tocabi_cc/";
     string weight_file_ = "";
     string cmd_file_ = "";
     int cmd_mode_ = 0;

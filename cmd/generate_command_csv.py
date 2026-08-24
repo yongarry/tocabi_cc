@@ -24,7 +24,7 @@ DEFAULT_OUTPUT = os.path.join(_THIS_DIR, "command.csv")
 RANGE_X = (0.25, 0.25)       # forward step length [m]
 RANGE_Y = (0.205, 0.205)   # lateral step width (positive magnitude) [m]
 RANGE_Z = (0.15, 0.15)       # per-step height change [m]
-RANGE_YAW = (0.1, 0.1)     # per-step turn [rad]
+RANGE_YAW = (-0., 0.)     # per-step turn [rad]
 RANGE_COM_Z = (0.0, 0.0)    # CoM height offset [m] (train com_z_command)
 NOMINAL_Y = 0.205          # lateral width used for the final stop step [m]
 
@@ -89,9 +89,9 @@ def main():
                    metavar=("MIN", "MAX"), help="roty / step_yaw range [rad]")
     p.add_argument("--comz", nargs=2, type=float, default=list(RANGE_COM_Z),
                    metavar=("MIN", "MAX"), help="comz / CoM height offset range [m]")
-    p.add_argument("--ssp", type=float, default=0.7, help="single support time [s]")
-    p.add_argument("--dsp", type=float, default=0.15, help="double support time [s]")
-    p.add_argument("--height", type=float, default=0.1, help="swing apex height [m]")
+    p.add_argument("--ssp", type=float, default=0.9, help="single support time [s]")
+    p.add_argument("--dsp", type=float, default=0.05, help="double support time [s]")
+    p.add_argument("--height", type=float, default=0.05, help="swing apex height [m]")
     p.add_argument("--no-stop", action="store_true",
                    help="do not force the last step to be a stop step")
     p.add_argument("--no-convert", action="store_true",

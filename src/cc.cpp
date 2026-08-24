@@ -31,7 +31,7 @@ CustomController::CustomController(RobotData &rd)
     if (is_on_robot_)
         cfg_path = "/home/dyros/catkin_ws/src/tocabi_cc/config/tocabi_cc.yaml";
     loadConfig(cfg_path, write_file_, weight_file_, cmd_file_, cmd_mode_, policy_mode, hz_, vrp_height_);
-    writeFile.open("/home/yong/ubuntu-20-04/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
+    writeFile.open("/home/yong20/ros_ws/ros1/footsteptocabi_ws/src/tocabi_cc/result/log.txt", ofstream::out);
     if (is_on_robot_)
         writeFile.open("/home/dyros/catkin_ws/src/tocabi_cc/result/log.txt", ofstream::out);
     initVariable();
@@ -952,14 +952,14 @@ void CustomController::generateFeet()
         target_swing_foot_stance_.linear() = DyrosMath::Euler2rot(target_euler(0), target_euler(1), target_euler(2));
 
         // for z, divide it to 3 phases(lift up, maintain, lift down)
-        double lift_up_time = t_ssp * 0.2;
-        double maintain_time = t_ssp * 0.5;
+        double lift_up_time = t_ssp * 0.1;
+        double maintain_time = t_ssp * 0.9;
 
-        double lift_up_height = 0.0;
-        if (swing_foot_start_pos_stance_(2) < swing_foot_end_pos_stance_(2)) 
-            lift_up_height = swing_foot_end_pos_stance_(2) + foot_commands_(0, 8);
-        else 
-            lift_up_height = swing_foot_start_pos_stance_(2) + foot_commands_(0, 8);
+        double lift_up_height = std::max({
+            swing_foot_start_pos_stance_(2),
+            swing_foot_end_pos_stance_(2),
+            target_stance_foot_stance_.translation()(2)
+        }) + foot_commands_(0, 8);
 
         if (walking_tick < t_dsp + lift_up_time)
             target_swing_foot_stance_.translation()(2) = DyrosMath::cubic(walking_tick, t_dsp, t_dsp + lift_up_time, swing_foot_start_pos_stance_(2), lift_up_height, 0.0, 0.0);
