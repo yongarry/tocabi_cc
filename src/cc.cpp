@@ -1,4 +1,5 @@
 #include "cc.h"
+#include <utility>
 
 using namespace TOCABI;
 
@@ -182,6 +183,7 @@ void CustomController::initVariable()
     foot_commands_.setZero(number_of_foot_step, 9);
     phase_indicator_.setZero(number_of_foot_step);
     t_total_.setZero(number_of_foot_step);
+    com_z_command_.setZero(number_of_foot_step + 1);
 
     target_com_state_stance_.setZero(9);
     target_com_state_global_.setZero(9);
@@ -195,7 +197,7 @@ void CustomController::loadCommands()
     string cur_path = workspace_dir_ + "cmd/" + cmd_file_;
     if (is_on_robot_)
         cur_path = "/home/dyros/catkin_ws/src/tocabi_cc/cmd/" + cmd_file_;
-    // Read CSV file and fill foot_commands_planner_ (step x 9)
+    // Read CSV file and fill foot_commands_planner_ (step x 9) + optional comz row
     ifstream file(cur_path);
     if (!file.is_open()) {
         cerr << "Failed to open command file: " << cur_path << std::endl;
@@ -215,7 +217,7 @@ void CustomController::loadCommands()
         return all_of(cells.begin(), cells.end(), [](const string& c){ return c.empty(); });};
 
     number_of_planner_step = 0;
-    vector<vector<double>> command_rows;
+    vector<pair<string, vector<double>>> command_rows;
     string line;
 
     while (getline(file, line)) {
@@ -228,17 +230,62 @@ void CustomController::loadCommands()
         vector<double> values(number_of_planner_step, 0.0);
         for (int i = 0; i < number_of_planner_step && i + 1 < static_cast<int>(cells.size()); ++i)
             values[i] = cells[i + 1].empty() ? 0.0 : stod(cells[i + 1]);
-        command_rows.push_back(move(values));
+        command_rows.emplace_back(cells[0], move(values));
     }
 
     foot_commands_planner_.setZero(number_of_planner_step, 9);
-    int row_count = min(static_cast<int>(command_rows.size()), 9);
-    for (int cmd = 0; cmd < row_count; ++cmd)
-        for (int step = 0; step < number_of_planner_step; ++step)
-            foot_commands_planner_(step, cmd) = command_rows[cmd][step];
+    com_z_planner_.setZero(number_of_planner_step);
+
+    static const char* kFootKeys[9] = {
+        "posx", "posy", "posz", "rotr", "rotp", "roty", "tssp", "tdsp", "foot"
+    };
+    for (size_t r = 0; r < command_rows.size(); ++r) {
+        const string& key = command_rows[r].first;
+        const vector<double>& values = command_rows[r].second;
+        bool matched = false;
+        for (int cmd = 0; cmd < 9; ++cmd) {
+            if (key == kFootKeys[cmd]) {
+                for (int step = 0; step < number_of_planner_step; ++step)
+                    foot_commands_planner_(step, cmd) = values[step];
+                matched = true;
+                break;
+            }
+        }
+        if (matched) continue;
+        if (key == "comz" || key == "com_z") {
+            for (int step = 0; step < number_of_planner_step; ++step)
+                com_z_planner_(step) = values[step];
+            continue;
+        }
+        // Backward compatible: first 9 unnamed/positional rows -> foot columns
+        if (r < 9) {
+            for (int step = 0; step < number_of_planner_step; ++step)
+                foot_commands_planner_(step, static_cast<int>(r)) = values[step];
+        } else if (r == 9) {
+            for (int step = 0; step < number_of_planner_step; ++step)
+                com_z_planner_(step) = values[step];
+        }
+    }
 
     cout << "Number of Planner Step: " << number_of_planner_step << endl;
     cout << "Foot Commands Planner: \n" << foot_commands_planner_ << endl;
+    cout << "CoM Z Planner: " << com_z_planner_.transpose() << endl;
+}
+
+void CustomController::fillComZFromPlanner(int start_idx)
+{
+    const int LA = number_of_foot_step;
+    const int N = number_of_planner_step;
+    auto at = [&](int idx) -> double {
+        if (N <= 0) return 0.0;
+        if (idx < 0) return com_z_planner_(0);
+        if (idx < N) return com_z_planner_(idx);
+        return com_z_planner_(N - 1);
+    };
+    for (int s = 0; s < LA; ++s)
+        com_z_command_(s) = at(start_idx + s);
+    // Extra lookahead slot (LA+1), same convention as train / g1 fill_global_buffer_
+    com_z_command_(LA) = at(start_idx + LA - 1);
 }
 
 void CustomController::processNoise()
@@ -317,7 +364,7 @@ void CustomController::processObservation()
             state_cur_[data_idx++] = q_vel_noise_(i); //rd_cc_.q_dot_virtual_(i+6);
     }
 
-    // 5. target joint positions
+    // // 5. target joint positions
     for (int i = 0; i < num_actuator_action; i++)
         state_cur_[data_idx++] = q_leg_desired_(i);
 
@@ -332,7 +379,9 @@ void CustomController::processObservation()
         state_cur_[data_idx++] = foot_commands_(0, i);
         // if (i == 1) cout << "foot_commands_(0, 1): " << foot_commands_(0, i) << endl;
     }
-    // 8. previous action
+    // 8. com_z_command (matches train command[..., 23] / foot_commands_w_comz)
+    // state_cur_[data_idx++] = com_z_command_(0);
+    // 9. previous action
     for (int i = 0; i <num_actuator_action; i++) 
         state_cur_[data_idx++] = DyrosMath::minmax_cut(rl_action_(i), -1.0, 1.0);
 
@@ -350,6 +399,7 @@ void CustomController::processObservation()
         writeFile << q_leg_desired_(i) << "\t";
     for (int i = 0; i < 9; i++)
         writeFile << foot_commands_(0, i) << "\t";
+    writeFile << com_z_command_(0) << "\t";
     
     std::copy(state_buffer_.begin() + num_cur_state, state_buffer_.end(), state_buffer_.begin());
     std::copy(state_cur_.begin(), state_cur_.end(), state_buffer_.begin() + num_cur_state*(num_state_skip*num_state_hist-1));
@@ -545,6 +595,7 @@ void CustomController::updateCommand()
                 if (phase_indicator_(i) == 0) foot_commands_(i, 1) *= -1; // if left foot stance, y cmd should be negative
                 // if (phase_indicator_(i) == 0) foot_commands_(i, 5) *= -1; // if left foot stance, yaw cmd should be negative
             }
+            fillComZFromPlanner(0);
         }
         else if (walking_tick > t_total_(0)){
             cout << "================================================" << endl;
@@ -564,6 +615,7 @@ void CustomController::updateCommand()
             // if (phase_indicator_(number_of_foot_step - 1) == 0) foot_commands_(number_of_foot_step - 1, 5) *= -1; // if left foot stance, yaw cmd should be negative
 
             planner_index_++;
+            fillComZFromPlanner(planner_index_ - number_of_foot_step);
             walking_tick = 0;
         }
     }
@@ -596,7 +648,7 @@ void CustomController::updateCommand()
             foot_commands_(0, 0) = cos(-stance(2))*x_len - sin(-stance(2))*y_len;
             foot_commands_(0, 1) = sin(-stance(2))*x_len + cos(-stance(2))*y_len;
             foot_commands_(0, 2) = foot_commands_planner_(0, 2);
-            foot_commands_(0, 5) = foot_commands_planner_(0, 5) - stance(2);
+            foot_commands_(0, 5) = wrap_to_pi(foot_commands_planner_(0, 5) - stance(2));
 
             for (int i = 1; i < number_of_foot_step; i++){
                 x_len = foot_commands_planner_(i, 0) - foot_commands_planner_(i-1, 0);
@@ -604,8 +656,9 @@ void CustomController::updateCommand()
                 foot_commands_(i, 0) = cos(-foot_commands_planner_(i-1, 5))*x_len - sin(-foot_commands_planner_(i-1, 5))*y_len;
                 foot_commands_(i, 1) = sin(-foot_commands_planner_(i-1, 5))*x_len + cos(-foot_commands_planner_(i-1, 5))*y_len;
                 foot_commands_(i, 2) = foot_commands_planner_(i, 2) - foot_commands_planner_(i-1, 2);
-                foot_commands_(i, 5) = foot_commands_planner_(i, 5) - foot_commands_planner_(i-1, 5);
+                foot_commands_(i, 5) = wrap_to_pi(foot_commands_planner_(i, 5) - foot_commands_planner_(i-1, 5));
             }
+            fillComZFromPlanner(0);
         }
         else if (walking_tick > t_total_(0)){
             cout << "================================================" << endl;
@@ -657,7 +710,7 @@ void CustomController::updateCommand()
                         foot_commands_(step, 2) = foot_commands_planner_(planned_idx, 2) - foot_commands_planner_(planned_idx-1, 2);
                         foot_commands_(step, 3) = foot_commands_planner_(planned_idx, 3);
                         foot_commands_(step, 4) = foot_commands_planner_(planned_idx, 4);
-                        foot_commands_(step, 5) = foot_commands_planner_(planned_idx, 5) - foot_commands_planner_(planned_idx-1, 5);
+                        foot_commands_(step, 5) = wrap_to_pi(foot_commands_planner_(planned_idx, 5) - foot_commands_planner_(planned_idx-1, 5));
                         foot_commands_(step, 6) = foot_commands_planner_(planned_idx, 6);
                         foot_commands_(step, 7) = foot_commands_planner_(planned_idx, 7);
                         foot_commands_(step, 8) = foot_commands_planner_(planned_idx, 8);
@@ -677,6 +730,7 @@ void CustomController::updateCommand()
                 if (phase_indicator_(step) == 0) foot_commands_(step, 1) *= -1;
                 t_total_(step) = floor((foot_commands_(step, 6) + foot_commands_(step, 7)*2) * hz_);
             }
+            fillComZFromPlanner(current_step_number_);
         }
     }
 }
@@ -745,14 +799,16 @@ void CustomController::generateVRP()
     unsigned int index = 0;
 
     // calculate vrp points based on foot commands
+    // z uses vrp_height + com_z deltas (train vrp_generator.generate_vrp_online)
     target_stance_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
-    // target_stance_foot_state_first_stance_(0, 2) = vrp_state_(2);
-    target_stance_foot_state_first_stance_(0, 2) = vrp_height_;
+    target_stance_foot_state_first_stance_(0, 2) = vrp_height_ + com_z_command_(0);
 
     target_swing_foot_state_first_stance_.setZero(number_of_foot_step, 4); // x, y, z, yaw
     target_swing_foot_state_first_stance_(0, 0) = target_stance_foot_state_first_stance_(0, 0) + foot_commands_(0, 0);
     target_swing_foot_state_first_stance_(0, 1) = target_stance_foot_state_first_stance_(0, 1) + foot_commands_(0, 1);
-    target_swing_foot_state_first_stance_(0, 2) = target_stance_foot_state_first_stance_(0, 2) + foot_commands_(0, 2);
+    // h_0 + step_z + (com_z[1] - com_z[0])
+    target_swing_foot_state_first_stance_(0, 2) = target_stance_foot_state_first_stance_(0, 2) + foot_commands_(0, 2)
+                                                 + (com_z_command_(1) - com_z_command_(0));
     target_swing_foot_state_first_stance_(0, 3) = target_stance_foot_state_first_stance_(0, 3) + foot_commands_(0, 5); // yaw
 
     const double vrpx_offset = 0.03;
@@ -766,7 +822,8 @@ void CustomController::generateVRP()
         target_swing_foot_state_first_stance_(step, 1) =  target_stance_foot_state_first_stance_(step, 1)
                                                         + foot_commands_(step, 0) * sin(target_stance_foot_state_first_stance_(step, 3))
                                                         + foot_commands_(step, 1) * cos(target_stance_foot_state_first_stance_(step, 3));
-        target_swing_foot_state_first_stance_(step, 2) = target_stance_foot_state_first_stance_(step, 2) + foot_commands_(step, 2);
+        target_swing_foot_state_first_stance_(step, 2) = target_stance_foot_state_first_stance_(step, 2) + foot_commands_(step, 2)
+                                                        + (com_z_command_(step + 1) - com_z_command_(step));
         target_swing_foot_state_first_stance_(step, 3) = target_stance_foot_state_first_stance_(step, 3) + foot_commands_(step, 5);
     }
     for (unsigned int step = 0; step < number_of_foot_step; step++) {

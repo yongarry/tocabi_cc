@@ -1,4 +1,5 @@
 write_file: true
+# weight: "policy2d-woik.onnx"
 weight: "policy3d-lcp30.onnx"
 cmd: "global_command.csv"
 # cmd: "command.csv"

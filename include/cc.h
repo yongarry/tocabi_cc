@@ -67,8 +67,9 @@ public:
     void feedforwardPolicy();
 
     static const int num_actuator_action = 12;
+    // 3+3+3 + 12+12+12 + 2 + 9 + 1(com_z) + 12 = 69  (matches train foot_commands_w_comz)
     int num_cur_state = 68;
-    // int num_cur_state = 50;
+    // int num_cur_state = 54;
     static const int num_state_skip = 2;
     static const int num_state_hist = 10;
     int num_state = num_cur_state * num_state_hist;
@@ -118,6 +119,8 @@ public:
     MatrixXd foot_commands_;
     VectorXd phase_indicator_; // 0 means left foot stance(right swing), 1 means right foot stance(left swing)
     VectorXd t_total_;
+    // CoM height offset command per lookahead step (+1), matching train com_z_command
+    VectorXd com_z_command_;
     bool is_right_stance_first = false; 
     double vrp_height_ = 0.728;
 
@@ -125,6 +128,7 @@ public:
     int planner_index_ = 0;
     int current_step_number_ = 0;
     MatrixXd foot_commands_planner_;
+    VectorXd com_z_planner_; // per planned step (optional CSV row "comz")
 
     Vector3d lfoot_global_state_; // (x, y, yaw) in global frame
     Vector3d rfoot_global_state_;
@@ -134,6 +138,7 @@ public:
 
     void updateCommand();
     void updateRobotStates();
+    void fillComZFromPlanner(int start_idx);
 
     void generateVRP();
     void oneStepVRP(int step, Eigen::MatrixXd &vrp_temp_, Eigen::VectorXd &com_yaw_temp_, Eigen::VectorXd &com_yaw_vel_temp_);
@@ -182,11 +187,10 @@ public:
 
     // Utility functions
     static double wrap_to_pi(double angles){
-        angles = fmod(angles, 2*M_PI);
-        if (angles > M_PI){
-          angles -= 2*M_PI;    
-        }
-        return angles;
+        angles = fmod(angles + M_PI, 2.0 * M_PI);
+        if (angles < 0.0)
+            angles += 2.0 * M_PI;
+        return angles - M_PI;
     }
 
 private:
